@@ -1,0 +1,14 @@
+# Core dependencies — everything the scanner needs for scanning, scoring,
+# and generating both the template HTML/PDF reports. No API key, no
+# network dependency beyond calling AWS itself.
+boto3>=1.34
+python-dateutil>=2.9
+rich>=13.7
+jinja2>=3.1
+markupsafe>=2.1
+fpdf2>=2.8
+
+# Optional — only needed if you plan to set ANTHROPIC_API_KEY and use
+# --explain on non-templated findings. Not required to run the scanner.
+# Install with: pip install -r requirements.txt -r requirements-ai.txt
+# or: pip install plexavo[ai]

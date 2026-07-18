@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "plexavo"
+version = "0.1.0"
+description = "Open-source AWS misconfiguration scanner — runs with your own local AWS credentials, nothing sent to anyone else."
+readme = "README.md"
+license = { text = "AGPL-3.0-or-later" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Kavee" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Topic :: Security",
+    "Environment :: Console",
+]
+
+# Deliberately does NOT include `anthropic` — the AI narration layer is
+# opt-in (see plexavo/report/ai_narration.py). Every OSS user gets a
+# genuinely useful tool with zero extra installs and zero API cost.
+dependencies = [
+    "boto3>=1.34",
+    "python-dateutil>=2.9",
+    "rich>=13.7",
+    "jinja2>=3.1",
+    "markupsafe>=2.1",
+    "fpdf2>=2.8",
+]
+
+[project.optional-dependencies]
+# pip install plexavo[ai]  — only needed if you plan to set
+# ANTHROPIC_API_KEY and use --explain on non-templated findings.
+ai = ["anthropic>=0.116"]
+# pypdf is test-only — tests/test_report_offline.py reads back a
+# generated PDF's text to verify rendering, it's not something the
+# scanner itself needs at runtime.
+dev = ["pytest>=8.0", "pypdf>=4.0"]
+
+[project.urls]
+Homepage = "https://github.com/plexavo"
+Issues = "https://github.com/plexavo/issues"
+Security = "https://github.com/plexavo/blob/main/SECURITY.md"
+
+[project.scripts]
+plexavo = "plexavo.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["plexavo*"]
+
+[tool.setuptools.package-data]
+"plexavo.report" = ["templates/*.j2", "fonts/*.ttf", "fonts/*.txt"]

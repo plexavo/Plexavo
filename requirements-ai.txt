@@ -1,0 +1,3 @@
+# Optional. Only needed if you set ANTHROPIC_API_KEY and use --explain.
+# Bring your own key — never required, never embedded in this codebase.
+anthropic>=0.116
