@@ -8,6 +8,8 @@ CloudFormation role, and no server in between. Run it yourself, with
 your own credentials, and nothing leaves your machine.
 """
 
+from __future__ import annotations
+
 import boto3
 from botocore.exceptions import NoCredentialsError, ProfileNotFound
 

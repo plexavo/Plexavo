@@ -31,6 +31,8 @@ v3 changes (Deny statements + permission boundaries):
   pattern: broad Allow + full Deny).
 """
 
+from __future__ import annotations
+
 from plexavo.findings import Finding, Severity
 from plexavo.principals import (
     Principal,

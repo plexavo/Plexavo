@@ -23,6 +23,8 @@ is_admin_equivalent() in checks/iam.py handles that specific case
 separately by treating any non-wildcard boundary as disqualifying.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 
