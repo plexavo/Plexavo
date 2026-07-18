@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/plexavo-logo-dark.png">
+  <img src="assets/plexavo-logo-light.png" alt="Plexavo" height="60">
+</picture>
+
 # Plexavo
 
 An open-source AWS misconfiguration scanner that reads your account with
