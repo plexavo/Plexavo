@@ -1,7 +1,9 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/plexavo-logo-dark.png">
-  <img src="assets/plexavo-logo-light.png" alt="Plexavo" height="60">
-</picture>
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/plexavo-logo-dark.png">
+    <img src="assets/plexavo-logo-light.png" alt="Plexavo" height="90">
+  </picture>
+</div>
 
 # Plexavo
 
@@ -42,15 +44,53 @@ Plus `scoring.py` (the 0-100 score) and `plexavo/report/ai_narration.py`
 
 ## Quick start
 
+Everything below uses a **virtual environment (venv)** — a self-contained
+folder holding Plexavo and its dependencies, completely separate from
+your system Python. This is the one install path tested end to end with
+zero friction, so it's the one documented here for now (other methods
+are planned, but aren't ready to recommend yet).
+
+### 1. Create the environment (once)
+
+```bash
+python -m venv plexavo-env
+```
+
+You only run this once, ever — not every time you want to use Plexavo.
+It creates a `plexavo-env` folder in whatever directory you're in.
+
+### 2. Activate it
+
+```bash
+plexavo-env\Scripts\activate      # Windows
+source plexavo-env/bin/activate   # Mac/Linux
+```
+
+Your prompt should now show `(plexavo-env)` at the start of the line —
+that's your confirmation it's active. You'll do this step **every time
+you open a new terminal**, but you never repeat step 1.
+
+### 3. Install
+
 ```bash
 pip install plexavo
 ```
 
-(Or from source: `git clone` this repo, then `pip install -e .` from the
-repo root.)
+**Have an Anthropic API key and want AI-narrated explanations** (see
+[Cost](#cost) — it's optional and costs a few cents per scan, not
+free)? Install with the `[ai]` extra instead — same package, just with
+the `anthropic` library included:
 
-Run a scan with your own AWS credentials — no setup beyond what
-`aws configure` already gave you:
+```bash
+pip install "plexavo[ai]"
+```
+
+No key yet, or not sure? Skip it for now — the plain install is
+genuinely complete on its own. You can run `pip install "plexavo[ai]"`
+later in this same environment whenever you decide you want it; nothing
+needs reinstalling or redone.
+
+### 4. Run a scan
 
 ```bash
 plexavo scan --profile my-aws-profile --report-html report.html
@@ -60,7 +100,8 @@ No `--profile`? It uses your default profile / environment variables,
 same resolution order as the AWS CLI. No AI, no API key, no cost — this
 alone is a complete, genuinely useful scan.
 
-Want plain-English explanations for each finding too:
+Want plain-English explanations for each finding too (needs the
+`[ai]` install above):
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."   # your own key, your own account
@@ -75,6 +116,34 @@ plexavo scan --profile my-aws-profile --explain --report-html report.html --repo
   rate limit, network issue)? The scan and report are completely
   unaffected — you get raw finding detail instead of narration for that
   finding, not an error. See [Cost](#cost).
+
+### 5. When you're done for now
+
+```bash
+deactivate
+```
+
+This just exits the environment — nothing gets deleted or uninstalled.
+Your prompt goes back to normal.
+
+### 6. Coming back later
+
+Skip straight to activating again — no need to repeat steps 1 or 3:
+
+```bash
+plexavo-env\Scripts\activate      # Windows
+source plexavo-env/bin/activate   # Mac/Linux
+```
+
+`plexavo` is immediately available again, exactly as you left it.
+
+### From source (for contributing, or trying an unreleased change)
+
+```bash
+git clone https://github.com/plexavo/plexavo.git
+cd plexavo
+pip install -e .
+```
 
 ## Project structure
 
