@@ -70,26 +70,34 @@ def build_report_data(findings, score_result, account_id, explanations=None):
 
     findings_by_severity = {sev: [] for sev in SEVERITY_ORDER}
     for f, exp in zip(findings, explanations):
+        # Confidence/evidence are Finding-level facts, set by the check's
+        # own detection logic — they exist whether or not this finding
+        # ever got AI/template narration, so they're read from `f`
+        # directly, not from `exp`. `exp` only ever supplies prose.
+        confidence, evidence = f.confidence, f.evidence
+
         if exp is not None:
-            whats_wrong, attacker_does, how_to_fix = exp.whats_wrong, exp.attacker_does, exp.how_to_fix
+            impact, how_to_fix, next_step = exp.impact, exp.how_to_fix, exp.next_step
             # Derived from actual content, not from exp.source: a
             # "fallback" or "api-unparsed" Explanation carries the same
-            # empty attacker_does/how_to_fix shape as "never attempted,"
-            # so it renders through the same clean single-paragraph
-            # branch below rather than a 3-section layout with empty
-            # sections. This keeps the report-rendering contract in one
-            # place instead of also matching against ai_narration.py's
-            # source-string values, which could drift independently.
-            explained = bool(attacker_does) and bool(how_to_fix)
+            # empty how_to_fix/next_step shape as "never attempted," so
+            # it renders through the same clean single-paragraph branch
+            # below rather than a layout with empty sections. This keeps
+            # the report-rendering contract in one place instead of also
+            # matching against ai_narration.py's source-string values,
+            # which could drift independently.
+            explained = bool(how_to_fix) and bool(next_step)
         else:
-            whats_wrong, attacker_does, how_to_fix, explained = f.raw_detail, "", "", False
+            impact, how_to_fix, next_step, explained = f.raw_detail, "", "", False
 
         findings_by_severity[f.severity.value].append({
             "check_id": f.check_id,
             "resource": f.resource_arn.rsplit("/", 1)[-1] if "/" in f.resource_arn else f.resource_arn,
             "resource_arn": f.resource_arn,
-            "whats_wrong": whats_wrong,
-            "attacker_does": attacker_does,
+            "impact": impact,
+            "confidence": confidence,
+            "evidence": evidence,
+            "next_step": next_step,
             "how_to_fix": how_to_fix,
             "explained": explained,
         })

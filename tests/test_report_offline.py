@@ -91,9 +91,9 @@ assert_true("`" not in result, f"No stray backticks survive fence stripping (got
 print("\n=== PDF: REGRESSION — real CLI flags survive full generation, not just the prepare step ===")
 findings = [f("IAM-03", Severity.CRITICAL)]
 explanations = [Explanation(
-    whats_wrong="Uses `AdministratorAccess` directly.",
-    attacker_does="Calls `iam:CreatePolicyVersion` to escalate.",
+    impact="Uses `AdministratorAccess` directly. Calls `iam:CreatePolicyVersion` to escalate.",
     how_to_fix="```bash\naws iam detach-user-policy --user-name lab-admin --policy-arn arn:aws:iam::aws:policy/AdministratorAccess\n```",
+    next_step="Run `aws iam detach-user-policy --user-name lab-admin --policy-arn arn:aws:iam::aws:policy/AdministratorAccess` now.",
     source="api",
 )]
 score = calculate_score(findings)
@@ -131,9 +131,9 @@ def _max_spacing_adjustment(pdf_path):
 
 findings = [f("IAM-01", Severity.CRITICAL)]
 explanations = [Explanation(
-    whats_wrong="Full admin access with no restriction.",
-    attacker_does="x",
+    impact="Full admin access with no restriction. x",
     how_to_fix="aws iam detach-user-policy --user-name lab-admin --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
+    next_step="Detach the policy now.",
     source="api",
 )]
 score = calculate_score(findings)

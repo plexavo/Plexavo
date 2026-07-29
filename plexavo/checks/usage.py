@@ -174,7 +174,7 @@ def check_26_unused_permissions(cloudtrail, principals: list) -> list:
         unused = {a for a in granted if not _is_action_used(a, used)}
         if not unused:
             continue
-        cap_note = " (CloudTrail lookup hit its page cap — this list may be incomplete)" if hit_cap else ""
+        cap_note = " CloudTrail lookup hit its page cap — this list may be incomplete." if hit_cap else ""
         shown = ", ".join(sorted(unused)[:10])
         more = f", and {len(unused) - 10} more" if len(unused) > 10 else ""
         findings.append(Finding(
@@ -184,11 +184,13 @@ def check_26_unused_permissions(cloudtrail, principals: list) -> list:
             resource_arn=p.arn,
             raw_detail=(
                 f"Role '{p.name}' is explicitly granted {len(unused)} action(s) never called in the "
-                f"last 90 days of CloudTrail history{cap_note}: {shown}{more}. Permissions that are "
+                f"last 90 days of CloudTrail history: {shown}{more}. Permissions that are "
                 f"granted but never used are excess attack surface with no offsetting benefit — "
                 f"consider removing what isn't actually needed."
             ),
             account_context=f"granted={len(granted)},used={len(used)},unused={len(unused)}",
+            confidence="Likely — see note" if hit_cap else "Confirmed",
+            evidence=f"granted={len(granted)}, used={len(used)}, unused={len(unused)}.{cap_note}".strip(),
         ))
     return findings
 
@@ -236,6 +238,7 @@ def check_27_roles_not_assumed(iam_roles_raw: list, lookback_days: int = 90) -> 
                 f"purpose — confirm it's still needed, or remove it."
             ),
             account_context=f"last_used={last_used_str}",
+            evidence=f"last_used={last_used_str}",
         ))
     return findings
 

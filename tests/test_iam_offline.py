@@ -130,7 +130,12 @@ findings4 = run(baseline_principals + [conditioned_role])
 cond_findings = [f for f in by_check(findings4, "IAM-01") if f.resource_arn == conditioned_role.arn]
 assert_true(len(cond_findings) == 1, "Conditioned wildcard-admin still produces exactly one finding (not suppressed)")
 assert_true(cond_findings and cond_findings[0].severity == Severity.HIGH, "Conditioned wildcard-admin is downgraded to High, not Critical")
-assert_true(cond_findings and "Condition block" in cond_findings[0].raw_detail, "Finding text explicitly notes the unevaluated condition")
+assert_true(cond_findings and cond_findings[0].confidence == "Likely — see note",
+            "Confidence is explicitly downgraded as a structured field, not just implied by severity")
+assert_true(cond_findings and "Condition block" in cond_findings[0].evidence,
+            "The unevaluated condition is captured in evidence — a distinct, structured fact, not free text buried in raw_detail")
+assert_true(cond_findings and "verify manually" not in cond_findings[0].raw_detail.lower(),
+            "raw_detail stays clean — the uncertainty caveat lives in confidence/evidence, not appended prose")
 
 print("\n=== New: full wildcard Deny suppresses the finding entirely (break-glass pattern) ===")
 breakglass_role = role("breakglass-admin", [

@@ -204,14 +204,17 @@ def _write_finding_card(pdf: FPDF, f: dict, sev_color: tuple) -> None:
     pdf.set_x(content_x)
 
     if f["explained"]:
-        _write_labeled_block(pdf, content_x, content_w, "WHAT'S WRONG", f["whats_wrong"])
-        _write_labeled_block(pdf, content_x, content_w, "WHAT AN ATTACKER DOES", f["attacker_does"])
-        _write_labeled_block(pdf, content_x, content_w, "HOW TO FIX", f["how_to_fix"], mono=True)
+        _write_labeled_block(pdf, content_x, content_w, "IMPACT", f["impact"])
+        _write_confidence_line(pdf, content_x, f["confidence"])
+        if f["evidence"]:
+            _write_labeled_block(pdf, content_x, content_w, "EVIDENCE", f["evidence"], mono=True)
+        _write_labeled_block(pdf, content_x, content_w, "NEXT STEP", f["next_step"], mono=True)
+        _write_labeled_block(pdf, content_x, content_w, "FULL FIX DETAIL", f["how_to_fix"], mono=True)
     else:
-        pdf.set_x(content_x)
-        pdf.set_font("DejaVu", "", 9.5)
-        pdf.set_text_color(50, 50, 50)
-        pdf.multi_cell(content_w, 5.2, text=_prepare_markdown(f["whats_wrong"]), markdown=True, align="L", new_x="LMARGIN", new_y="NEXT")
+        _write_labeled_block(pdf, content_x, content_w, "IMPACT", f["impact"])
+        _write_confidence_line(pdf, content_x, f["confidence"])
+        if f["evidence"]:
+            _write_labeled_block(pdf, content_x, content_w, "EVIDENCE", f["evidence"], mono=True)
 
     if pdf.page_no() == start_page:
         end_y = pdf.get_y()
@@ -233,4 +236,18 @@ def _write_labeled_block(pdf: FPDF, x: float, w: float, label: str, text: str, m
     pdf.set_font("DejaVu", "", 9 if not mono else 8.5)
     pdf.set_text_color(40, 40, 40)
     pdf.multi_cell(w, 5.0, text=_prepare_markdown(text), markdown=True, align="L", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1.5)
+
+
+def _write_confidence_line(pdf: FPDF, x: float, confidence: str) -> None:
+    """Quiet by default (matches the HTML report's design intent) — only
+    colored when a finding genuinely needs a second look, so the common
+    "Confirmed" case doesn't add visual noise to every single card."""
+    pdf.set_x(x)
+    pdf.set_font("DejaVu", "B", 7.5)
+    if confidence == "Confirmed":
+        pdf.set_text_color(130, 130, 130)
+    else:
+        pdf.set_text_color(*SEVERITY_COLORS["Medium"])
+    pdf.cell(0, 5, text=f"CONFIDENCE: {confidence.upper()}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(1.5)

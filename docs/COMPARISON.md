@@ -188,6 +188,15 @@ just claimed:**
   Neither Prowler nor PMapper does anything close to the WHAT'S
   WRONG / WHAT AN ATTACKER DOES / HOW TO FIX structure. Confirmed by reading
   both tools' actual output side by side.
+  > **Update:** this shipped as Impact / Confidence / Evidence / Next Step
+  > in the actual report, not the three-section layout named above — the
+  > underlying differentiator (structured, plain-English narration
+  > competitors don't have) is unchanged, just refined after real use
+  > showed the fix detail needed to be collapsible and the finding's own
+  > confidence/evidence needed to be surfaced as distinct fields, not
+  > buried in prose. Leaving the original wording above as-is rather than
+  > editing it away, same reasoning as the CFN-flow note earlier in this
+  > document.
 - **USE-26/27's general-purpose usage analysis is broader than anything
   either competitor has** — Prowler's equivalent is scoped to one service
   (Bedrock); PMapper has no usage-staleness concept at all.

@@ -211,6 +211,83 @@
     color: var(--text);
   }
 
+  /* Confidence — quiet by default; only draws the eye when something
+     genuinely needs a second look, not on every finding */
+  .confidence-row { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .confidence-flag {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+  }
+  .confidence-flag.needs-review {
+    color: var(--medium);
+    background: #3a2f0a;
+    background: color-mix(in srgb, var(--medium) 12%, transparent);
+    border-color: #6b551a;
+    border-color: color-mix(in srgb, var(--medium) 35%, transparent);
+  }
+
+  /* Evidence — the concrete account-state fact, kept visually distinct
+     from prose so it reads as "data," not narration */
+  .evidence-block {
+    font-family: 'Geist Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 4px 0 0;
+  }
+
+  /* Next step — the one thing someone under time pressure should read
+     even if nothing else on the card */
+  .next-step {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-left-color: var(--good);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 4px;
+  }
+  .next-step .arrow { color: var(--good); font-weight: 700; flex-shrink: 0; }
+  .next-step p { margin: 0; font-size: 14px; color: var(--text); }
+  .next-step code {
+    font-family: 'Geist Mono', monospace;
+    background: var(--black);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+
+  /* Full fix detail — present, not deleted, just collapsed by default
+     so a non-technical reader isn't handed a wall of CLI before the
+     plain-English parts */
+  .full-fix-details { margin-top: 12px; }
+  .full-fix-details summary {
+    cursor: pointer;
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    list-style: none;
+  }
+  .full-fix-details summary::-webkit-details-marker { display: none; }
+  .full-fix-details summary::before { content: "▸ "; }
+  .full-fix-details[open] summary::before { content: "▾ "; }
+  .full-fix-details summary:hover { color: var(--text); }
+
   .footer {
     margin-top: 64px;
     padding-top: 20px;
@@ -295,23 +372,37 @@
           <span class="check-id">{{ f.check_id }}</span>
           <span class="resource">{{ f.resource }}</span>
         </div>
+        <div class="finding-section">
+          <div class="finding-label">Impact</div>
+          <p>{{ f.impact | markdown_inline }}</p>
+        </div>
+
+        <div class="confidence-row">
+          <span class="confidence-flag{{ ' needs-review' if f.confidence != 'Confirmed' else '' }}">{{ f.confidence }}</span>
+        </div>
+
+        {% if f.evidence %}
+          <div class="finding-section">
+            <div class="finding-label">Evidence</div>
+            <div class="evidence-block">{{ f.evidence }}</div>
+          </div>
+        {% endif %}
+
         {% if f.explained %}
           <div class="finding-section">
-            <div class="finding-label">What's wrong</div>
-            <p>{{ f.whats_wrong | markdown_inline }}</p>
+            <div class="finding-label">Next step</div>
+            <div class="next-step">
+              <span class="arrow">→</span>
+              <p>{{ f.next_step | markdown_inline }}</p>
+            </div>
           </div>
-          <div class="finding-section">
-            <div class="finding-label">What an attacker does</div>
-            <p>{{ f.attacker_does | markdown_inline }}</p>
-          </div>
-          <div class="finding-section">
-            <div class="finding-label">How to fix</div>
-            <pre>{{ f.how_to_fix | markdown_inline }}</pre>
-          </div>
-        {% else %}
-          <div class="finding-section">
-            <p>{{ f.whats_wrong | markdown_inline }}</p>
-          </div>
+
+          <details class="full-fix-details">
+            <summary>Full fix detail</summary>
+            <div class="finding-section">
+              <pre>{{ f.how_to_fix | markdown_inline }}</pre>
+            </div>
+          </details>
         {% endif %}
       </div>
       {% endfor %}

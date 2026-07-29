@@ -165,14 +165,18 @@ def _run_scan(args) -> None:
                 # like whether that's because no key was set, the key
                 # was invalid, or the call failed for any other reason.
                 body = (f"[bold]{f.check_id}[/bold] — {f.resource_arn.split('/')[-1]}\n\n"
-                        f"{explanation.whats_wrong}\n\n"
+                        f"{explanation.impact}\n\n"
                         f"[dim]No AI narration for this finding — set ANTHROPIC_API_KEY for "
                         f"plain-English explanations, or see the raw detail above.[/dim]")
             else:
+                confidence_style = "yellow" if explanation.confidence != "Confirmed" else "dim"
                 body = (f"[bold]{f.check_id}[/bold] — {f.resource_arn.split('/')[-1]}\n\n"
-                        f"[bold]WHAT'S WRONG:[/bold] {explanation.whats_wrong}\n\n"
-                        f"[bold]WHAT AN ATTACKER DOES:[/bold] {explanation.attacker_does}\n\n"
-                        f"[bold]HOW TO FIX:[/bold] {explanation.how_to_fix}")
+                        f"[bold]IMPACT:[/bold] {explanation.impact}\n\n"
+                        f"[{confidence_style}]CONFIDENCE: {explanation.confidence}[/{confidence_style}]\n\n")
+                if explanation.evidence:
+                    body += f"[bold]EVIDENCE:[/bold] {explanation.evidence}\n\n"
+                body += (f"[bold green]NEXT STEP:[/bold green] {explanation.next_step}\n\n"
+                         f"[bold]FULL FIX DETAIL:[/bold] {explanation.how_to_fix}")
 
             console.print(Panel(
                 body,
