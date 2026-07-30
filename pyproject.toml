@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plexavo"
-version = "0.1.0"
+version = "0.1.1"
 description = "Open-source AWS misconfiguration scanner — runs with your own local AWS credentials, nothing sent to anyone else."
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
@@ -41,9 +41,9 @@ ai = ["anthropic>=0.116"]
 dev = ["pytest>=8.0", "pypdf>=4.0"]
 
 [project.urls]
-Homepage = "https://github.com/plexavo"
-Issues = "https://github.com/plexavo/issues"
-Security = "https://github.com/plexavo/blob/main/SECURITY.md"
+Homepage = "https://github.com/REPLACE_WITH_YOUR_GITHUB_ORG/plexavo"
+Issues = "https://github.com/REPLACE_WITH_YOUR_GITHUB_ORG/plexavo/issues"
+Security = "https://github.com/REPLACE_WITH_YOUR_GITHUB_ORG/plexavo/blob/main/SECURITY.md"
 
 [project.scripts]
 plexavo = "plexavo.cli:main"
