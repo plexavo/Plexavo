@@ -42,6 +42,58 @@ case).
 Plus `scoring.py` (the 0-100 score) and `plexavo/report/ai_narration.py`
 (the opt-in AI layer).
 
+## Example output
+
+Illustrative example (a public S3 bucket, an unencrypted volume, a role that's
+never been assumed) — this is what a scan actually surfaces, including a
+finding walked through `--explain`:
+
+```
+Your AWS Security Score: 74/100 (Good)
+
+                                              Findings (3)
+┏━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Check   ┃ Severity ┃ Resource                           ┃ Detail                                     ┃
+┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ STOR-19 │ Critical │ arn:aws:s3:::taskflow-uploads-prod │ Bucket 'taskflow-uploads-prod' allows      │
+│         │          │                                    │ public read via bucket policy.             │
+│ ENC-29  │ Medium   │ vol-015506d04acb46ca9              │ EBS volume 'vol-015506d04acb46ca9' is not  │
+│         │          │                                    │ encrypted at rest.                         │
+│ USE-27  │ High     │ AWSSecurityScannerReadOnlyRole     │ Role 'AWSSecurityScannerReadOnlyRole' has  │
+│         │          │                                    │ never been assumed since creation.         │
+└─────────┴──────────┴────────────────────────────────────┴────────────────────────────────────────────┘
+
+╭────────────────────────────────────────── source: template ──────────────────────────────────────────╮
+│ STOR-19 — arn:aws:s3:::taskflow-uploads-prod                                                         │
+│                                                                                                      │
+│ IMPACT: Bucket 'taskflow-uploads-prod' doesn't have full S3 Block Public Access protection enabled.  │
+│ Without this protection, a single mistake — an overly broad bucket policy, a public ACL grant,       │
+│ someone copy-pasting a policy from a tutorial — immediately exposes every object to anyone on the    │
+│ internet via a plain s3:GetObject call, with nothing left to catch the mistake.                      │
+│                                                                                                      │
+│ CONFIDENCE: Confirmed                                                                                │
+│                                                                                                      │
+│ NEXT STEP: Turn on Block Public Access now: aws s3api put-public-access-block --bucket               │
+│ taskflow-uploads-prod --public-access-block-configuration                                            │
+│ "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"       │
+│                                                                                                      │
+│ FULL FIX DETAIL: Enable all four Block Public Access settings unless there's a specific, documented  │
+│ reason not to:                                                                                       │
+│ aws s3api put-public-access-block --bucket taskflow-uploads-prod --public-access-block-configuration │
+│ "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"        │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Severity, confidence, and evidence are always separate signals, never merged
+into one label — a low-confidence Critical and a high-confidence Medium don't
+read the same. This particular finding has no Evidence line because it's a
+directly-observed fact with nothing uncertain about it — Evidence only appears
+when a check has a concrete account-state fact behind it (e.g. an IAM policy
+scoped by a Condition block, or a CloudTrail lookup that hit its page cap on
+`USE-26`), and Confidence only drops from "Confirmed" in that same situation.
+`--report-html`/`--report-pdf` render this same data as a full report; see
+[Cost](#cost) for what `--explain` needs and what it costs.
+
 ## Quick start
 
 Everything below uses a **virtual environment (venv)** — a self-contained
