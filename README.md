@@ -46,7 +46,9 @@ Plus `scoring.py` (the 0-100 score) and `plexavo/report/ai_narration.py`
 
 Illustrative example (a public S3 bucket, an unencrypted volume, a role that's
 never been assumed) — this is what a scan actually surfaces, including a
-finding walked through `--explain`:
+finding's free template remediation (shown by default, no `--explain`
+needed; `--explain` would replace this panel with a full AI narrative
+instead):
 
 ```
 Your AWS Security Score: 74/100 (Good)
@@ -154,25 +156,31 @@ plexavo scan --profile my-aws-profile --report-html report.html
 ```
 
 No `--profile`? It uses your default profile / environment variables,
-same resolution order as the AWS CLI. No AI, no API key, no cost — this
-alone is a complete, genuinely useful scan.
+same resolution order as the AWS CLI. No AI, no API key, no cost — and
+findings still come with free Next Step / Full Fix Detail guidance
+wherever a template exists (10 common check types); this alone is a
+complete, genuinely useful scan.
 
-Want plain-English explanations for each finding too (needs the
-`[ai]` install above):
+Want a full AI-written explanation for *every* finding instead (needs
+the `[ai]` install above)?
 
 ```bash
 export ANTHROPIC_API_KEY="sk-ant-..."   # your own key, your own account
 plexavo scan --profile my-aws-profile --explain --report-html report.html --report-pdf report.pdf
 ```
 
-- Drop `--explain` for a fast, free scan with raw technical findings only.
+- Drop `--explain` and findings still get free template remediation where
+  available (no API key needed) and raw technical detail otherwise.
+  `--explain` replaces that with a live AI narrative for every finding,
+  including the templated ones.
 - Drop `--report-html`/`--report-pdf` to just see the console table.
-- `--explain-limit N` (default 25) caps how many findings get AI narration
-  in one run, as a safety rail against unexpectedly large real scans.
+- `--explain-limit N` (default 25) caps how many findings get a live AI
+  call when `--explain` is passed, as a safety rail against unexpectedly
+  large real scans — it doesn't limit the free template remediation.
 - No `ANTHROPIC_API_KEY` set, or a call fails for any reason (invalid key,
   rate limit, network issue)? The scan and report are completely
-  unaffected — you get raw finding detail instead of narration for that
-  finding, not an error. See [Cost](#cost).
+  unaffected — that finding falls back to template/raw detail instead of
+  an AI narrative, not an error. See [Cost](#cost).
 
 ### Alternative: pipx
 
@@ -260,10 +268,14 @@ docs/
 ## Cost
 
 Detection is free (pure Python/boto3), always, regardless of anything
-else in this section. AI narration only runs with `--explain`, and even
-then: 10 of the most common, narratively-generic finding types are
-hand-written templates with zero API cost; only genuinely account-specific
-findings call Claude, typically $0.01-0.02 per finding depending on answer
+else in this section. Every scan also gets free Next Step / Full Fix
+Detail remediation wherever one of 10 hand-written templates matches the
+finding type — no flag, no API key, zero cost, on by default.
+
+Live AI only runs with `--explain`, and when it does it's used for
+*every* finding, including the 10 templated ones (a deliberate choice —
+"AI narration on" always means fully AI-written content, not a mix of
+template and AI), typically $0.01-0.02 per finding depending on answer
 length. A full scan with `--explain` on a real account is usually well
 under a dollar. This is **your own** `ANTHROPIC_API_KEY`, in **your own**
 Anthropic account — this project never sees your key, never embeds one of
