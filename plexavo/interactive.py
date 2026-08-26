@@ -36,12 +36,11 @@ REPORT_FORMATS = [
     ("Console output only (no file)", "none"),
 ]
 
-TIPS = [
-    "Run without --profile to scan your default AWS credentials.",
-    "Nothing you scan ever leaves this machine — no server in between.",
-    "--explain adds plain-English narration; optional, a few cents per scan.",
+FEATURES = [
+    "AI-powered remediation guidance for every finding",
+    "IAM privilege escalation path mapping",
+    "100% local scanning — your AWS credentials never leave this machine",
 ]
-
 
 def _splash_panel() -> Panel:
     header = Text()
@@ -56,10 +55,10 @@ def _splash_panel() -> Panel:
     body.append("\n")
     body.append(WEBSITE, style="underline grey62")
     body.append("\n\n")
-    body.append("TIPS\n", style="bold grey74")
-    for i, tip in enumerate(TIPS):
-        body.append(f"  · {tip}", style="grey66")
-        if i != len(TIPS) - 1:
+    body.append("FEATURES\n", style="bold grey74")
+    for i, feature in enumerate(FEATURES):
+        body.append(f"  · {feature}", style="grey66")
+        if i != len(FEATURES) - 1:
             body.append("\n")
 
     return Panel(
@@ -198,25 +197,27 @@ def _prompt_report_options(console: Console) -> dict | None:
 
         report_html = None
         report_pdf = None
+        if fmt != "none":
+            console.print(
+                "\n[grey62]Files save in the folder you launched plexavo from, unless "
+                "you type a full path.[/grey62]"
+            )
         if fmt in ("html", "both"):
-            report_html = Prompt.ask(
-                "Name the HTML report file (add a folder in front for a specific location)",
-                default="report.html", console=console,
-            ).strip()
+            report_html = Prompt.ask("Name the HTML file", default="report.html", console=console).strip()
         if fmt in ("pdf", "both"):
-            report_pdf = Prompt.ask(
-                "Name the PDF report file (add a folder in front for a specific location)",
-                default="report.pdf", console=console,
-            ).strip()
+            report_pdf = Prompt.ask("Name the PDF file", default="report.pdf", console=console).strip()
 
         console.print()
         key_present = bool(os.environ.get("ANTHROPIC_API_KEY"))
         if key_present:
-            console.print("[bold green]✓ ANTHROPIC_API_KEY detected[/bold green] — AI narration available.")
+            console.print("[bold green]✓ ANTHROPIC_API_KEY detected[/bold green] — full AI narration available.")
         else:
-            console.print("[bold red]✗ ANTHROPIC_API_KEY not set[/bold red] — narration will fall back "
-                           "to raw finding detail.")
-        explain = Confirm.ask("Enable AI-narrated explanations?", console=console, default=key_present)
+            console.print("[bold red]✗ ANTHROPIC_API_KEY not set[/bold red] — you'll still get free template "
+                           "remediation for common findings; live AI narration needs a key.")
+        explain = Confirm.ask(
+            "Enable full AI narration for every finding? (off still includes free template remediation)",
+            console=console, default=key_present,
+        )
     except (KeyboardInterrupt, EOFError):
         return None
 
@@ -224,12 +225,14 @@ def _prompt_report_options(console: Console) -> dict | None:
 
 
 def _confirm_and_run(console: Console, profile: str, identity: dict, session: boto3.Session, options: dict) -> bool:
+    html_line = os.path.abspath(options["report_html"]) if options["report_html"] else "(skipped)"
+    pdf_line = os.path.abspath(options["report_pdf"]) if options["report_pdf"] else "(skipped)"
     summary = (
         f"Profile: {profile}\n"
         f"Account: {identity['Account']}\n"
         f"Region: {session.region_name}\n"
-        f"HTML report: {options['report_html'] or '(skipped)'}\n"
-        f"PDF report: {options['report_pdf'] or '(skipped)'}\n"
+        f"HTML report: {html_line}\n"
+        f"PDF report: {pdf_line}\n"
         f"AI narration: {'on' if options['explain'] else 'off'}"
     )
     console.print()
