@@ -96,37 +96,27 @@ scoped by a Condition block, or a CloudTrail lookup that hit its page cap on
 
 ## Quick start
 
-Everything below uses a **virtual environment (venv)** — a self-contained
-folder holding Plexavo and its dependencies, completely separate from
-your system Python. This is the one install path tested end to end with
-zero friction, so it's the one documented here for now (other methods
-are planned, but aren't ready to recommend yet).
+**Recommended: [uv](https://docs.astral.sh/uv/).** It installs Plexavo into
+its own isolated environment automatically — no venv to create, activate,
+or remember to reactivate in every new terminal.
 
-### 1. Create the environment (once)
+### 1. Install uv (if you don't already have it)
 
 ```bash
-python -m venv plexavo-env
+curl -LsSf https://astral.sh/uv/install.sh | sh          # Mac/Linux
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex" # Windows
 ```
 
-You only run this once, ever — not every time you want to use Plexavo.
-It creates a `plexavo-env` folder in whatever directory you're in.
+(Full options: [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).)
 
-### 2. Activate it
+### 2. Install Plexavo
 
 ```bash
-plexavo-env\Scripts\activate      # Windows
-source plexavo-env/bin/activate   # Mac/Linux
+uv tool install plexavo
 ```
 
-Your prompt should now show `(plexavo-env)` at the start of the line —
-that's your confirmation it's active. You'll do this step **every time
-you open a new terminal**, but you never repeat step 1.
-
-### 3. Install
-
-```bash
-pip install plexavo
-```
+That's it — `plexavo` is now on your PATH in every terminal, until you
+uninstall it. No activate step, ever.
 
 **Have an Anthropic API key and want AI-narrated explanations** (see
 [Cost](#cost) — it's optional and costs a few cents per scan, not
@@ -134,15 +124,30 @@ free)? Install with the `[ai]` extra instead — same package, just with
 the `anthropic` library included:
 
 ```bash
-pip install "plexavo[ai]"
+uv tool install "plexavo[ai]"
 ```
 
 No key yet, or not sure? Skip it for now — the plain install is
-genuinely complete on its own. You can run `pip install "plexavo[ai]"`
-later in this same environment whenever you decide you want it; nothing
-needs reinstalling or redone.
+genuinely complete on its own. Add it later with:
 
-### 4. Run a scan
+```bash
+uv tool install --reinstall "plexavo[ai]"
+```
+
+Just want to try it once without installing anything?
+
+```bash
+uvx plexavo scan --profile my-aws-profile
+```
+
+Updating or removing later:
+
+```bash
+uv tool upgrade plexavo
+uv tool uninstall plexavo
+```
+
+### 3. Run a scan
 
 ```bash
 plexavo scan --profile my-aws-profile --report-html report.html
@@ -169,32 +174,41 @@ plexavo scan --profile my-aws-profile --explain --report-html report.html --repo
   unaffected — you get raw finding detail instead of narration for that
   finding, not an error. See [Cost](#cost).
 
-### 5. When you're done for now
+### Alternative: pipx
+
+Already use [pipx](https://pipx.pypa.io/)? It works exactly the same way —
+its own isolated environment, one global command, no venv:
 
 ```bash
-deactivate
+pipx install plexavo
+pipx install "plexavo[ai]"   # with AI-narrated explanations
 ```
 
-This just exits the environment — nothing gets deleted or uninstalled.
-Your prompt goes back to normal.
+### Alternative: pip + venv
 
-### 6. Coming back later
-
-Skip straight to activating again — no need to repeat steps 1 or 3:
+Prefer to manage the environment yourself, or on a system without uv/pipx?
+Modern Python (PEP 668) blocks a plain `pip install` outside a venv on
+many systems, so create one first:
 
 ```bash
+python -m venv plexavo-env
 plexavo-env\Scripts\activate      # Windows
 source plexavo-env/bin/activate   # Mac/Linux
+
+pip install plexavo
+pip install "plexavo[ai]"   # with AI-narrated explanations
 ```
 
-`plexavo` is immediately available again, exactly as you left it.
+You'll need to reactivate this venv (`plexavo-env\Scripts\activate` /
+`source plexavo-env/bin/activate`) every time you open a new terminal —
+`deactivate` exits it without uninstalling anything.
 
 ### From source (for contributing, or trying an unreleased change)
 
 ```bash
 git clone https://github.com/plexavo/plexavo.git
 cd plexavo
-pip install -e .
+uv pip install -e .   # or: pip install -e . (inside a venv)
 ```
 
 ## Project structure
