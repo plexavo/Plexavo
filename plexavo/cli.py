@@ -44,7 +44,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"plexavo {__version__}")
 
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command", required=False)
     scan = subparsers.add_parser("scan", help="Run a scan against one AWS account")
 
     scan.add_argument("--profile", default=None,
@@ -214,6 +214,12 @@ def main():
     args = parser.parse_args()
     if args.command == "scan":
         _run_scan(args)
+    elif args.command is None:
+        if sys.stdout.isatty():
+            from plexavo.interactive import run_interactive
+            run_interactive()
+        else:
+            parser.print_help()
 
 
 if __name__ == "__main__":
