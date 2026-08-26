@@ -385,17 +385,23 @@ COMMON_CHECK_TEMPLATES = {
 }
 
 
-def explain_finding(finding: Finding, client=None) -> Explanation:
-    """Route to a templated explanation (zero API cost) for the 10 most
-    common, narratively-generic check types, or call Claude for findings
-    where account-specific chain/blast-radius reasoning genuinely varies
-    (which role got chained to, which account is external, which
-    specific root action fired, etc.).
+def explain_finding(finding: Finding, client=None, use_ai: bool = False) -> Explanation | None:
+    """use_ai=False (default): route to the free template (zero API cost,
+    zero network) for the 10 most common, narratively-generic check
+    types; every other check returns None (raw finding detail only — no
+    API call is ever attempted in this mode, regardless of whether a key
+    is configured). This is the always-on baseline — no flag needed to
+    get free remediation guidance where a template exists.
+
+    use_ai=True: every finding, including the 10 templated ones, is sent
+    to Claude instead — deliberately bypasses the template shortcut so
+    "AI narration on" always means fully AI-written content, never a mix
+    of template and AI.
 
     `client` is accepted for testability (inject a fake Anthropic client
-    to prove the templated path never touches the network, or to test
-    the API path without spending real tokens). Production code never
-    needs to pass this — it's built automatically from ANTHROPIC_API_KEY.
+    to test the API path without spending real tokens). Production code
+    never needs to pass this — it's built automatically from
+    ANTHROPIC_API_KEY.
 
     Deliberately broad exception handling: an AI explanation is
     enrichment on top of an already-valid, already-computed finding —
@@ -405,12 +411,14 @@ def explain_finding(finding: Finding, client=None) -> Explanation:
     actual AWS state (where silently swallowing an unexpected error
     could hide a real detection bug).
     """
-    template_fn = COMMON_CHECK_TEMPLATES.get(finding.check_id)
-    if template_fn:
-        result = template_fn(finding)
-        result.confidence = finding.confidence
-        result.evidence = finding.evidence
-        return result
+    if not use_ai:
+        template_fn = COMMON_CHECK_TEMPLATES.get(finding.check_id)
+        if template_fn:
+            result = template_fn(finding)
+            result.confidence = finding.confidence
+            result.evidence = finding.evidence
+            return result
+        return None
 
     try:
         if client is None:

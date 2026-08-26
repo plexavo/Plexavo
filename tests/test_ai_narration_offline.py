@@ -98,6 +98,22 @@ finding = f("IAM-01", resource_arn="arn:aws:iam::111111111111:user/lab-admin")
 result = explain_finding(finding, client=ExplodingClient())
 assert_true("lab-admin" in result.impact, "The real resource name appears in the templated text")
 
+print("\n=== use_ai=False (default): non-templated check returns None, zero network ===")
+finding = f("IAM-05")  # NOT in COMMON_CHECK_TEMPLATES
+result = explain_finding(finding, client=ExplodingClient())  # use_ai=False is the default
+assert_true(result is None, f"No template + AI off -> None, no API call attempted (got {result!r})")
+
+print("\n=== use_ai=True bypasses the template entirely, even for a templated check_id ===")
+fake_response_for_iam01 = (
+    "IMPACT: This policy grants unrestricted access to every resource.\n\n"
+    "HOW TO FIX: Replace the wildcard with least-privilege actions.\n\n"
+    "NEXT STEP: Detach the policy immediately."
+)
+finding = f("IAM-01")  # IS in COMMON_CHECK_TEMPLATES
+result = explain_finding(finding, client=FakeClient(response_text=fake_response_for_iam01), use_ai=True)
+assert_true(result.source == "api", f"use_ai=True routes a templated check to the API, not the template (got source={result.source})")
+assert_true("unrestricted access to every resource" in result.impact, "The AI response is used verbatim, not the template's fixed text")
+
 print("\n=== _parse_sections: well-formatted plain output ===")
 raw = ("IMPACT: The bucket is public. Calls s3:GetObject to read everything.\n\n"
        "HOW TO FIX: Run aws s3api put-public-access-block ...\n\n"
@@ -133,7 +149,7 @@ fake_response_text = (
     "NEXT STEP: Edit the policy's Resource field now."
 )
 finding = f("IAM-05")  # NOT in COMMON_CHECK_TEMPLATES — must go through the API path
-result = explain_finding(finding, client=FakeClient(response_text=fake_response_text))
+result = explain_finding(finding, client=FakeClient(response_text=fake_response_text), use_ai=True)
 assert_true(result.source == "api", f"Non-templated check routes to the API path (got source={result.source})")
 assert_true(result.impact == "This role can assume an admin role. Calls sts:AssumeRole on the target role.", "API response parsed correctly end-to-end")
 assert_true(result.next_step == "Edit the policy's Resource field now.", "next_step parsed correctly from the API response")
@@ -150,7 +166,7 @@ text_block = type("TextBlock", (), {
     "text": "IMPACT: x\n\nHOW TO FIX: y\n\nNEXT STEP: z",
 })()
 finding = f("IAM-05")
-result = explain_finding(finding, client=FakeClient(response_blocks=[thinking_block, text_block]))
+result = explain_finding(finding, client=FakeClient(response_blocks=[thinking_block, text_block]), use_ai=True)
 assert_true(result.source == "api", f"Correctly extracts text past a leading ThinkingBlock (got source={result.source})")
 assert_true(result.impact == "x", f"Text content correctly parsed despite the thinking block (got: {result.impact!r})")
 
@@ -198,17 +214,17 @@ assert_true(_strip_leading_markdown_noise("plain text with ** bold ** later") ==
 print("\n=== REGRESSION: truncated response (stop_reason=max_tokens) is flagged, not silently returned ===")
 truncated_text = "IMPACT: x\n\nHOW TO FIX: Step 1: do this\naws iam delete-role-policy \\\n  --role-name"
 finding = f("IAM-05")
-result = explain_finding(finding, client=FakeClient(response_text=truncated_text, stop_reason="max_tokens"))
+result = explain_finding(finding, client=FakeClient(response_text=truncated_text, stop_reason="max_tokens"), use_ai=True)
 assert_true("TRUNCATED" in result.how_to_fix, f"Truncation is visibly flagged, not silently returned as if complete (got: {result.how_to_fix!r})")
 
 print("\n=== FALSE POSITIVE GUARD: normal, complete response does NOT get flagged as truncated ===")
 finding = f("IAM-05")
-result = explain_finding(finding, client=FakeClient(response_text=fake_response_text, stop_reason="end_turn"))
+result = explain_finding(finding, client=FakeClient(response_text=fake_response_text, stop_reason="end_turn"), use_ai=True)
 assert_true("TRUNCATED" not in result.how_to_fix, "A normal, complete response is not falsely flagged")
 
 print("\n=== API path: exception during the call -> graceful fallback, not a crash ===")
 finding = f("IAM-05", raw_detail="original technical detail here", confidence="Likely — see note", evidence="some evidence")
-result = explain_finding(finding, client=FakeClient(raise_exc=ConnectionError("simulated network failure")))
+result = explain_finding(finding, client=FakeClient(raise_exc=ConnectionError("simulated network failure")), use_ai=True)
 assert_true(result.source == "fallback", f"A failed API call falls back gracefully (got source={result.source})")
 assert_true(result.impact == "original technical detail here", "Fallback preserves the original raw_detail, doesn't lose the finding")
 # Per the OSS plan's §3.3 contract: the fallback must be silent in the
@@ -243,7 +259,7 @@ def _blocked_import(name, *args, **kwargs):
 _builtins.__import__ = _blocked_import
 try:
     finding = f("IAM-05", raw_detail="original technical detail here")
-    result = explain_finding(finding)
+    result = explain_finding(finding, use_ai=True)
 finally:
     _builtins.__import__ = _real_import
 assert_true(result.source == "fallback", f"Missing anthropic package falls back, doesn't crash (got source={result.source})")
