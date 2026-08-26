@@ -12,6 +12,8 @@ Slice 3: new-profile write flow.
 
 from __future__ import annotations
 
+import os
+
 import boto3
 from rich import box
 from rich.align import Align
@@ -26,6 +28,13 @@ from plexavo.aws_profile_setup import write_profile
 
 WEBSITE = "https://plexavo.com"
 NEW_PROFILE_CHOICE = "+ Configure new profile"
+
+REPORT_FORMATS = [
+    ("HTML report", "html"),
+    ("PDF report", "pdf"),
+    ("Both HTML and PDF", "both"),
+    ("Console output only (no file)", "none"),
+]
 
 TIPS = [
     "Run without --profile to scan your default AWS credentials.",
@@ -136,12 +145,14 @@ def _prompt_new_profile(console: Console) -> str | None:
     return name
 
 
-def _check_profile(console: Console, profile_name: str) -> boto3.Session | None:
+def _check_profile(console: Console, profile_name: str) -> tuple[boto3.Session, dict] | None:
     """Live sts get_caller_identity status check.
 
-    Returns the validated session on success, None on failure — reuses
+    Returns (session, identity) on success, None on failure — reuses
     auth.get_local_session so this is the exact same validation the real
-    scan uses, just surfaced here instead of discovered mid-scan.
+    scan uses, just surfaced here instead of discovered mid-scan. The
+    identity dict is handed back so callers (the confirm+run summary)
+    don't need a second sts call for the same information.
     """
     with console.status(f"[grey62]Checking '{profile_name}'...[/grey62]"):
         try:
@@ -166,15 +177,78 @@ def _check_profile(console: Console, profile_name: str) -> boto3.Session | None:
         f"Region: {session.region_name}",
         border_style="green", box=box.ROUNDED,
     ))
-    return session
+    return session, identity
+
+
+def _prompt_report_options(console: Console) -> dict | None:
+    """Report format + AI-narration choices. Returns None on cancel."""
+    console.print("\n[bold]Report format:[/bold]\n")
+    for i, (label, _) in enumerate(REPORT_FORMATS, start=1):
+        console.print(f"  [bold green]{i}[/bold green]  {label}")
+    console.print()
+
+    try:
+        idx = IntPrompt.ask(
+            "Enter a number",
+            choices=[str(i) for i in range(1, len(REPORT_FORMATS) + 1)],
+            show_choices=False,
+            console=console,
+        )
+        fmt = REPORT_FORMATS[idx - 1][1]
+
+        report_html = None
+        report_pdf = None
+        if fmt in ("html", "both"):
+            report_html = Prompt.ask(
+                "Name the HTML report file (add a folder in front for a specific location)",
+                default="report.html", console=console,
+            ).strip()
+        if fmt in ("pdf", "both"):
+            report_pdf = Prompt.ask(
+                "Name the PDF report file (add a folder in front for a specific location)",
+                default="report.pdf", console=console,
+            ).strip()
+
+        console.print()
+        key_present = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        if key_present:
+            console.print("[bold green]✓ ANTHROPIC_API_KEY detected[/bold green] — AI narration available.")
+        else:
+            console.print("[bold red]✗ ANTHROPIC_API_KEY not set[/bold red] — narration will fall back "
+                           "to raw finding detail.")
+        explain = Confirm.ask("Enable AI-narrated explanations?", console=console, default=key_present)
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+    return {"report_html": report_html, "report_pdf": report_pdf, "explain": explain}
+
+
+def _confirm_and_run(console: Console, profile: str, identity: dict, session: boto3.Session, options: dict) -> bool:
+    summary = (
+        f"Profile: {profile}\n"
+        f"Account: {identity['Account']}\n"
+        f"Region: {session.region_name}\n"
+        f"HTML report: {options['report_html'] or '(skipped)'}\n"
+        f"PDF report: {options['report_pdf'] or '(skipped)'}\n"
+        f"AI narration: {'on' if options['explain'] else 'off'}"
+    )
+    console.print()
+    console.print(Panel(summary, title="Ready to scan", border_style="grey50", box=box.ROUNDED))
+
+    try:
+        return Confirm.ask("Run scan now?", console=console, default=True)
+    except (KeyboardInterrupt, EOFError):
+        return False
 
 
 def run_interactive() -> None:
     """Entry point for bare `plexavo` in a real terminal.
 
     Slice 1: splash screen. Slice 2: profile picker + live status check.
-    Slice 3: new-profile write flow. Report options and the scan flow
-    itself land in later slices.
+    Slice 3: new-profile write flow. Slice 4: report options + confirm,
+    wired into the existing cli._run_scan (no duplicated scan logic —
+    interactive mode drives the exact same code path `plexavo scan`
+    does, just fed answers gathered via prompts instead of flags).
     """
     console = Console()
     show_splash(console)
@@ -191,10 +265,33 @@ def run_interactive() -> None:
                 continue
 
         console.print()
-        session = _check_profile(console, choice)
-        if session is None:
+        result = _check_profile(console, choice)
+        if result is None:
             continue
 
-        console.print("[dim]Profile confirmed. Report options and the scan "
-                       "flow itself land in the next slices.[/dim]")
-        return
+        session, identity = result
+        break
+
+    profile = choice
+    while True:
+        options = _prompt_report_options(console)
+        if options is None:
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+        if _confirm_and_run(console, profile, identity, session, options):
+            break
+        # Declined — loop back and let them re-pick report options.
+
+    console.print()
+    from plexavo.cli import _run_scan  # lazy: avoids a top-level circular import with cli.py
+    import argparse
+
+    _run_scan(argparse.Namespace(
+        profile=profile,
+        region=None,
+        explain=options["explain"],
+        explain_limit=25,
+        report_html=options["report_html"],
+        report_pdf=options["report_pdf"],
+    ))
