@@ -6,20 +6,25 @@ scripting/CI path documented in the README) never touches this module
 and keeps working exactly as before.
 
 Built in slices — see plexavo-journal.md for what's live so far.
-Slice 1: splash screen only.
+Slice 1: splash screen. Slice 2: profile picker + live status check
+(read-only — the new-profile *write* flow is a later slice).
 """
 
 from __future__ import annotations
 
+import boto3
 from rich import box
 from rich.align import Align
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import IntPrompt
 from rich.text import Text
 
 from plexavo import __version__
+from plexavo.auth import get_local_session
 
 WEBSITE = "https://plexavo.com"
+NEW_PROFILE_CHOICE = "+ Configure new profile"
 
 TIPS = [
     "Run without --profile to scan your default AWS credentials.",
@@ -61,11 +66,96 @@ def show_splash(console: Console) -> None:
     console.print()
 
 
+def _prompt_profile_menu(console: Console) -> str | None:
+    """Numbered profile menu — plain line-buffered input (type a number,
+    press Enter), not a live arrow-key redraw. Deliberate choice: the
+    prompt_toolkit-based arrow-key menu this replaced was unreliable
+    across Windows terminal hosts (desyncs, missed keys, sometimes never
+    registering) — this is immune to that whole class of bug."""
+    profiles = sorted(boto3.Session().available_profiles)
+    if not profiles:
+        console.print("[grey62]No AWS profiles found in ~/.aws/credentials or ~/.aws/config.[/grey62]\n")
+
+    options = list(profiles) + [NEW_PROFILE_CHOICE]
+
+    console.print("[bold]Select an AWS profile to scan:[/bold]\n")
+    for i, name in enumerate(options, start=1):
+        console.print(f"  [bold green]{i}[/bold green]  {name}")
+    console.print()
+
+    try:
+        choice = IntPrompt.ask(
+            "Enter a number",
+            choices=[str(i) for i in range(1, len(options) + 1)],
+            show_choices=False,
+            console=console,
+        )
+    except (KeyboardInterrupt, EOFError):
+        return None
+
+    return options[choice - 1]
+
+
+def _check_profile(console: Console, profile_name: str) -> boto3.Session | None:
+    """Live sts get_caller_identity status check.
+
+    Returns the validated session on success, None on failure — reuses
+    auth.get_local_session so this is the exact same validation the real
+    scan uses, just surfaced here instead of discovered mid-scan.
+    """
+    with console.status(f"[grey62]Checking '{profile_name}'...[/grey62]"):
+        try:
+            session = get_local_session(profile_name=profile_name)
+        except RuntimeError as e:
+            error = str(e)
+        else:
+            error = None
+
+    if error is not None:
+        console.print(Panel(
+            f"[bold red]✗ Failed[/bold red]\n\n{error}",
+            border_style="red", box=box.ROUNDED,
+        ))
+        return None
+
+    identity = session.client("sts").get_caller_identity()
+    console.print(Panel(
+        f"[bold green]✓ Active[/bold green]\n\n"
+        f"Account: {identity['Account']}\n"
+        f"ARN: {identity['Arn']}\n"
+        f"Region: {session.region_name}",
+        border_style="green", box=box.ROUNDED,
+    ))
+    return session
+
+
 def run_interactive() -> None:
     """Entry point for bare `plexavo` in a real terminal.
 
-    Slice 1 only: shows the splash screen. Profile selection, report
-    options, and the scan flow itself land in later slices.
+    Slice 1: splash screen. Slice 2: profile picker + live status check.
+    Report options and the scan flow itself land in later slices.
     """
     console = Console()
     show_splash(console)
+
+    while True:
+        choice = _prompt_profile_menu(console)
+        if choice is None:
+            console.print("[dim]Cancelled.[/dim]")
+            return
+
+        if choice == NEW_PROFILE_CHOICE:
+            console.print(
+                "\n[grey62]New-profile setup lands in the next slice — "
+                "pick an existing profile for now.[/grey62]\n"
+            )
+            continue
+
+        console.print()
+        session = _check_profile(console, choice)
+        if session is None:
+            continue
+
+        console.print("[dim]Profile confirmed. Report options and the scan "
+                       "flow itself land in the next slices.[/dim]")
+        return
