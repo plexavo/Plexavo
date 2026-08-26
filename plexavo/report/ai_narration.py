@@ -24,6 +24,8 @@ anthropic.Anthropic()'s init and messages.create()'s parameters
 installed SDK before writing this, not assumed.
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 
