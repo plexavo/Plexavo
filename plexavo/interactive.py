@@ -16,10 +16,10 @@ import os
 
 import boto3
 from rich import box
-from rich.align import Align
-from rich.console import Console
+from rich.console import Console, Group
 from rich.panel import Panel
 from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.table import Table
 from rich.text import Text
 
 from plexavo import __version__
@@ -42,27 +42,57 @@ FEATURES = [
     "100% local scanning — your AWS credentials never leave this machine",
 ]
 
-def _splash_panel() -> Panel:
-    header = Text()
-    header.append("PLEXAVO", style="bold white")
-    header.append("  ")
-    header.append(f"v{__version__}", style="grey62")
+def _gradient_wordmark(word: str, min_shade: int = 90, max_shade: int = 255) -> Text:
+    """Letter-spaced word with a symmetric grey -> white -> grey shimmer,
+    one shade per letter (a smooth peak at the center, not a linear ramp),
+    e.g. "P L E X A V O" fading brightest at the middle letter."""
+    text = Text()
+    n = len(word)
+    for i, ch in enumerate(word):
+        t = 1 - abs((i / (n - 1)) * 2 - 1) if n > 1 else 1.0
+        shade = round(min_shade + t * (max_shade - min_shade))
+        text.append(ch, style=f"bold #{shade:02x}{shade:02x}{shade:02x}")
+        if i != n - 1:
+            text.append(" ")
+    return text
 
+
+CLOUD_ART = (
+    "     .--.    \n"
+    "  .-(    ).  \n"
+    " (___.__)__) "
+)
+
+
+def _header_row() -> Table:
+    """Wordmark pinned to the left corner, a small ASCII cloud floating
+    in the opposite corner — a quiet logomark, not a centerpiece."""
+    wordmark = _gradient_wordmark("PLEXAVO")
+    wordmark.append("  ")
+    wordmark.append(f"v{__version__}", style="grey62")
+
+    grid = Table.grid(expand=True)
+    grid.add_column(ratio=1)
+    grid.add_column(justify="right")
+    grid.add_row(wordmark, Text(CLOUD_ART, style="grey50"))
+    return grid
+
+
+def _splash_panel() -> Panel:
     body = Text()
-    body.append_text(header)
-    body.append("\n")
     body.append("AWS Security Reimagined", style="italic grey74")
     body.append("\n")
     body.append(WEBSITE, style="underline grey62")
     body.append("\n\n")
-    body.append("FEATURES\n", style="bold grey74")
+    body.append("─" * 50, style="grey42")
+    body.append("\n\n")
     for i, feature in enumerate(FEATURES):
-        body.append(f"  · {feature}", style="grey66")
+        body.append(f"  ▸ {feature}", style="grey66")
         if i != len(FEATURES) - 1:
             body.append("\n")
 
     return Panel(
-        Align.center(body),
+        Group(_header_row(), body),
         border_style="grey50",
         box=box.ROUNDED,
         padding=(1, 4),

@@ -11,7 +11,7 @@ your own credentials, and nothing leaves your machine.
 from __future__ import annotations
 
 import boto3
-from botocore.exceptions import NoCredentialsError, ProfileNotFound
+from botocore.exceptions import ClientError, NoCredentialsError, ProfileNotFound
 
 
 def get_local_session(profile_name: str | None = None, region: str | None = None) -> boto3.Session:
@@ -49,6 +49,14 @@ def get_local_session(profile_name: str | None = None, region: str | None = None
             "No AWS credentials found. Run `aws configure` "
             f"{f'--profile {profile_name} ' if profile_name else ''}"
             "to set them up."
+        ) from e
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code", "Unknown")
+        raise RuntimeError(
+            f"AWS rejected these credentials ({code}). The access key may "
+            "be invalid, deactivated, or deleted — run `aws configure "
+            f"{f'--profile {profile_name} ' if profile_name else ''}"
+            "` to update them."
         ) from e
 
     return boto3.Session(profile_name=profile_name, region_name=resolved_region)
