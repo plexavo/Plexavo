@@ -150,19 +150,22 @@ PowerShell load your profile at all. Update later with
 ```powershell
 py -m venv plexavo-venv
 .\plexavo-venv\Scripts\Activate.ps1
-pip install plexavo
+python -m pip install plexavo
+python -m plexavo
 ```
 
-Now run `plexavo`. When you're finished, type `deactivate`.
+Use `python -m` for everything inside the venv. Creating a venv also
+generates its own `pip.exe` and `plexavo.exe`, and those are exactly the
+unsigned launcher stubs Smart App Control blocks — but the venv's
+`python.exe` is a copy of your real Python with its signature intact, so
+going through it (`python -m pip`, `python -m plexavo`) always works.
 
-A virtual environment is just a folder holding its own copy of Python and
-its packages. Activating it is what adds its `plexavo` to your PATH — and
-only for that one terminal. So every time you open a new terminal you run
-`.\plexavo-venv\Scripts\Activate.ps1` again before using Plexavo. That
-re-activation is the trade-off for installing nothing globally. If
-PowerShell blocks the activate script, run
-`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once. Update with
-`pip install --upgrade plexavo` inside the activated environment.
+Activating the venv (`.\plexavo-venv\Scripts\Activate.ps1`) just points
+`python` at this environment for the current terminal — you re-run it in
+each new terminal, and `deactivate` leaves it. If PowerShell blocks the
+activate script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+once. Update with `python -m pip install --upgrade plexavo` inside the
+activated environment.
 
 ### AI-narrated explanations (optional, any OS)
 
@@ -180,22 +183,19 @@ uv pip install -e .   # or: pip install -e . (inside a venv)
 
 ## Using Plexavo
 
-Just run:
+Run it with no arguments and it walks you through everything — choosing an
+AWS profile (or setting a new one up), picking whether you want an HTML or
+PDF report, then running the scan and showing your 0-100 score with every
+finding and its plain-English fix. Nothing to memorise.
 
 ```bash
-plexavo
+plexavo             # macOS/Linux, and Windows Option 1
+python -m plexavo   # Windows Option 2 — inside the activated venv
 ```
 
-with no arguments. It walks you through choosing an AWS profile (or
-setting a new one up), picking whether you want an HTML or PDF report,
-then runs the scan and shows your 0-100 score with every finding and its
-plain-English fix. Nothing to memorise.
-
-On Windows Option 2, run `python -m plexavo` if the bare `plexavo`
-command is ever blocked.
-
-Scripting a scan into CI or a scheduled job? `plexavo scan --help` covers
-the flag-driven form (`--profile`, `--region`, `--report-html`,
+Scripting a scan into CI or a scheduled job? Add `scan` and flags —
+`plexavo scan --help` (or `python -m plexavo scan --help`) covers the
+flag-driven form (`--profile`, `--region`, `--report-html`,
 `--report-pdf`, `--explain`).
 
 ## Project structure

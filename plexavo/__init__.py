@@ -4,4 +4,4 @@ Runs entirely with your own local AWS credentials. Nothing is sent to
 anyone else. See README.md for usage, or `plexavo scan --help`.
 """
 
-__version__ = "0.2.3"
+__version__ = "0.2.4"
