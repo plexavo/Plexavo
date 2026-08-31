@@ -47,3 +47,6 @@ jobs:
           plexavo --version
           plexavo --help
           plexavo scan --help
+          # The Windows install path (README): run via -m, no console script.
+          python -m plexavo --version
+          python -m plexavo scan --help

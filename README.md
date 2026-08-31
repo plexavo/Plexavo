@@ -98,20 +98,24 @@ scoped by a Condition block, or a CloudTrail lookup that hit its page cap on
 
 ## Quick start
 
-**Recommended: [uv](https://docs.astral.sh/uv/).** It installs Plexavo into
-its own isolated environment automatically — no venv to create, activate,
-or remember to reactivate in every new terminal.
+The install path depends on your OS — **uv on macOS & Linux**, **pip on
+Windows**. Either way it's a one-command install with no venv to create,
+activate, or reactivate in every new terminal.
 
-### 1. Install uv (if you don't already have it)
+### macOS & Linux — uv
+
+[uv](https://docs.astral.sh/uv/) installs Plexavo into its own isolated
+environment automatically.
+
+**1. Install uv** (if you don't already have it):
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh          # Mac/Linux
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex" # Windows
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 (Full options: [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).)
 
-### 2. Install Plexavo
+**2. Install Plexavo:**
 
 ```bash
 uv tool install plexavo
@@ -149,11 +153,59 @@ uv tool upgrade plexavo
 uv tool uninstall plexavo
 ```
 
-### 3. Run a scan
+### Windows — pip
+
+Install with `pip` and run the tool as `py -m plexavo`:
+
+```powershell
+py -m pip install --user plexavo
+py -m plexavo
+```
+
+`py -m plexavo` with no arguments opens the interactive menu, exactly
+like the `plexavo` command does on macOS/Linux — flags are only for
+scripting/CI.
+
+> **Why not uv/pipx on Windows?** Both work by putting a small generated
+> `plexavo.exe` launcher on your PATH. That launcher is unsigned, and
+> Windows Smart App Control blocks unsigned executables it doesn't
+> recognise — so `plexavo` can fail to start with a "can't confirm who
+> published" message. `py -m plexavo` calls Python directly and never
+> touches that launcher, so it always works. (If your machine doesn't
+> enforce Smart App Control, `uv tool install plexavo` works here too.)
+
+**AI-narrated explanations** (see [Cost](#cost)):
+
+```powershell
+py -m pip install --user "plexavo[ai]"
+```
+
+Updating or removing later:
+
+```powershell
+py -m pip install --user --upgrade plexavo
+py -m pip uninstall plexavo
+```
+
+### Optional: type `plexavo` instead of `py -m plexavo`
+
+Add a shortcut to your PowerShell profile once:
+
+```powershell
+Add-Content $PROFILE 'function plexavo { py -m plexavo @args }'
+```
+
+Open a new terminal and `plexavo` then works just like it does on
+macOS/Linux.
+
+### Run a scan
 
 ```bash
 plexavo scan --profile my-aws-profile --report-html report.html
 ```
+
+(On Windows without the shortcut above: `py -m plexavo scan --profile
+my-aws-profile --report-html report.html`.)
 
 No `--profile`? It uses your default profile / environment variables,
 same resolution order as the AWS CLI. No AI, no API key, no cost — and
@@ -184,19 +236,24 @@ plexavo scan --profile my-aws-profile --explain --report-html report.html --repo
 
 ### Alternative: pipx
 
-Already use [pipx](https://pipx.pypa.io/)? It works exactly the same way —
-its own isolated environment, one global command, no venv:
+Already use [pipx](https://pipx.pypa.io/) on macOS/Linux? It works exactly
+the same way as uv — its own isolated environment, one global command, no
+venv:
 
 ```bash
 pipx install plexavo
 pipx install "plexavo[ai]"   # with AI-narrated explanations
 ```
 
+On Windows, pipx has the same Smart App Control caveat as uv (see the
+Windows section above) — if the `plexavo` command is blocked, run
+`py -m plexavo` instead, or use the `pip` install.
+
 ### Alternative: pip + venv
 
-Prefer to manage the environment yourself, or on a system without uv/pipx?
-Modern Python (PEP 668) blocks a plain `pip install` outside a venv on
-many systems, so create one first:
+Want full isolation and prefer to manage the environment yourself? Modern
+Python (PEP 668) blocks a plain `pip install` outside a venv on many
+Linux and Homebrew setups, so create one first:
 
 ```bash
 python -m venv plexavo-env
@@ -209,7 +266,9 @@ pip install "plexavo[ai]"   # with AI-narrated explanations
 
 You'll need to reactivate this venv (`plexavo-env\Scripts\activate` /
 `source plexavo-env/bin/activate`) every time you open a new terminal —
-`deactivate` exits it without uninstalling anything.
+`deactivate` exits it without uninstalling anything. On Windows, run
+`python -m plexavo` if the `plexavo` command is blocked by Smart App
+Control.
 
 ### From source (for contributing, or trying an unreleased change)
 
@@ -228,6 +287,7 @@ plexavo/
 ├── findings.py                  # Finding data model, Severity enum
 ├── scoring.py                    # 0-100 score from a list of Findings
 ├── cli.py                         # `plexavo scan ...` entry point
+├── __main__.py                      # lets `python -m plexavo` run the CLI
 ├── checks/
 │   ├── iam.py                       # IAM-01 to IAM-06 (privilege escalation)
 │   ├── iam_hygiene.py                # IAM-07 to IAM-14 (hygiene, cross-account trust)
