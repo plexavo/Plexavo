@@ -1,9 +1,10 @@
 """Checks that `python -m plexavo` works and is equivalent to the installed
 `plexavo` command / `python -m plexavo.cli`.
 
-This is the Windows install path (README Quick start): install with pip, run
-via `py -m plexavo` instead of the Smart-App-Control-blocked `plexavo.exe`
-launcher. If the `plexavo/__main__.py` shim regresses, that path breaks.
+This is the Windows install path (README Install section): the venv option
+runs the tool via `py -m plexavo` instead of the Smart-App-Control-blocked
+`plexavo.exe` launcher. If the `plexavo/__main__.py` shim regresses, that
+path breaks.
 
 Run: python test_cli_entrypoint.py
 """

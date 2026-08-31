@@ -96,179 +96,79 @@ scoped by a Condition block, or a CloudTrail lookup that hit its page cap on
 `--report-html`/`--report-pdf` render this same data as a full report; see
 [Cost](#cost) for what `--explain` needs and what it costs.
 
-## Quick start
+## Install
 
-The install path depends on your OS — **uv on macOS & Linux**, **pip on
-Windows**. Either way it's a one-command install with no venv to create,
-activate, or reactivate in every new terminal.
+Plexavo is a command-line tool. Pick your OS below — every path installs
+it into its own isolated environment, so it never clashes with your other
+Python packages.
 
-### macOS & Linux — uv
+### macOS & Linux
 
-[uv](https://docs.astral.sh/uv/) installs Plexavo into its own isolated
-environment automatically.
-
-**1. Install uv** (if you don't already have it):
+[uv](https://docs.astral.sh/uv/) puts a single `plexavo` command on your
+PATH, in every terminal, with nothing to activate:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-(Full options: [uv installation docs](https://docs.astral.sh/uv/getting-started/installation/).)
-
-**2. Install Plexavo:**
-
-```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh   # skip if you have uv
 uv tool install plexavo
 ```
 
-That's it — `plexavo` is now on your PATH in every terminal, until you
-uninstall it. No activate step, ever.
+Update or remove later with `uv tool upgrade plexavo` /
+`uv tool uninstall plexavo`. Prefer [pipx](https://pipx.pypa.io/)?
+`pipx install plexavo` works the same way.
 
-**Have an Anthropic API key and want AI-narrated explanations** (see
-[Cost](#cost) — it's optional and costs a few cents per scan, not
-free)? Install with the `[ai]` extra instead — same package, just with
-the `anthropic` library included:
+### Windows
 
-```bash
-uv tool install "plexavo[ai]"
-```
+`uv` and `pipx` install fine, but the small `plexavo.exe` launcher they
+drop on your PATH is unsigned, and Windows Smart App Control refuses to
+run unsigned executables it doesn't recognise. The way around it is to
+run Plexavo through Python directly. Two ways — both isolated, pick one:
 
-No key yet, or not sure? Skip it for now — the plain install is
-genuinely complete on its own. Add it later with:
-
-```bash
-uv tool install --reinstall "plexavo[ai]"
-```
-
-Just want to try it once without installing anything?
-
-```bash
-uvx plexavo scan --profile my-aws-profile
-```
-
-Updating or removing later:
-
-```bash
-uv tool upgrade plexavo
-uv tool uninstall plexavo
-```
-
-### Windows — pip
-
-Install with `pip` and run the tool as `py -m plexavo`:
+#### Option 1 — uv (recommended)
 
 ```powershell
-py -m pip install --user plexavo
-py -m plexavo
+uv tool install plexavo
+
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
+Add-Content $PROFILE 'function plexavo { & "$env:APPDATA\uv\tools\plexavo\Scripts\python.exe" -m plexavo @args }'
 ```
 
-`py -m plexavo` with no arguments opens the interactive menu, exactly
-like the `plexavo` command does on macOS/Linux — flags are only for
-scripting/CI.
-
-> **Why not uv/pipx on Windows?** Both work by putting a small generated
-> `plexavo.exe` launcher on your PATH. That launcher is unsigned, and
-> Windows Smart App Control blocks unsigned executables it doesn't
-> recognise — so `plexavo` can fail to start with a "can't confirm who
-> published" message. `py -m plexavo` calls Python directly and never
-> touches that launcher, so it always works. (If your machine doesn't
-> enforce Smart App Control, `uv tool install plexavo` works here too.)
-
-**AI-narrated explanations** (see [Cost](#cost)):
-
-```powershell
-py -m pip install --user "plexavo[ai]"
-```
-
-Updating or removing later:
-
-```powershell
-py -m pip install --user --upgrade plexavo
-py -m pip uninstall plexavo
-```
-
-### Optional: type `plexavo` instead of `py -m plexavo`
-
-Add a shortcut to your PowerShell profile once:
-
-```powershell
-Add-Content $PROFILE 'function plexavo { py -m plexavo @args }'
-```
-
-Open a new terminal and `plexavo` then works just like it does on
+Open a new terminal and `plexavo` works exactly like it does on
 macOS/Linux.
 
-### Run a scan
+`uv tool install` still leaves the blocked `plexavo.exe` on your PATH.
+The line you add to your PowerShell profile shadows it with a command
+that calls uv's bundled `python.exe` directly — that Python is signed by
+the Python Software Foundation, so Smart App Control never stops it. You
+add it once; the `Set-ExecutionPolicy` line (also once) is what lets
+PowerShell load your profile at all. Update later with
+`uv tool upgrade plexavo`.
 
-```bash
-plexavo scan --profile my-aws-profile --report-html report.html
-```
+#### Option 2 — virtual environment (no uv)
 
-(On Windows without the shortcut above: `py -m plexavo scan --profile
-my-aws-profile --report-html report.html`.)
-
-No `--profile`? It uses your default profile / environment variables,
-same resolution order as the AWS CLI. No AI, no API key, no cost — and
-findings still come with free Next Step / Full Fix Detail guidance
-wherever a template exists (10 common check types); this alone is a
-complete, genuinely useful scan.
-
-Want a full AI-written explanation for *every* finding instead (needs
-the `[ai]` install above)?
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # your own key, your own account
-plexavo scan --profile my-aws-profile --explain --report-html report.html --report-pdf report.pdf
-```
-
-- Drop `--explain` and findings still get free template remediation where
-  available (no API key needed) and raw technical detail otherwise.
-  `--explain` replaces that with a live AI narrative for every finding,
-  including the templated ones.
-- Drop `--report-html`/`--report-pdf` to just see the console table.
-- `--explain-limit N` (default 25) caps how many findings get a live AI
-  call when `--explain` is passed, as a safety rail against unexpectedly
-  large real scans — it doesn't limit the free template remediation.
-- No `ANTHROPIC_API_KEY` set, or a call fails for any reason (invalid key,
-  rate limit, network issue)? The scan and report are completely
-  unaffected — that finding falls back to template/raw detail instead of
-  an AI narrative, not an error. See [Cost](#cost).
-
-### Alternative: pipx
-
-Already use [pipx](https://pipx.pypa.io/) on macOS/Linux? It works exactly
-the same way as uv — its own isolated environment, one global command, no
-venv:
-
-```bash
-pipx install plexavo
-pipx install "plexavo[ai]"   # with AI-narrated explanations
-```
-
-On Windows, pipx has the same Smart App Control caveat as uv (see the
-Windows section above) — if the `plexavo` command is blocked, run
-`py -m plexavo` instead, or use the `pip` install.
-
-### Alternative: pip + venv
-
-Want full isolation and prefer to manage the environment yourself? Modern
-Python (PEP 668) blocks a plain `pip install` outside a venv on many
-Linux and Homebrew setups, so create one first:
-
-```bash
-python -m venv plexavo-env
-plexavo-env\Scripts\activate      # Windows
-source plexavo-env/bin/activate   # Mac/Linux
-
+```powershell
+py -m venv plexavo-venv
+.\plexavo-venv\Scripts\Activate.ps1
 pip install plexavo
-pip install "plexavo[ai]"   # with AI-narrated explanations
 ```
 
-You'll need to reactivate this venv (`plexavo-env\Scripts\activate` /
-`source plexavo-env/bin/activate`) every time you open a new terminal —
-`deactivate` exits it without uninstalling anything. On Windows, run
-`python -m plexavo` if the `plexavo` command is blocked by Smart App
-Control.
+Now run `plexavo`. When you're finished, type `deactivate`.
+
+A virtual environment is just a folder holding its own copy of Python and
+its packages. Activating it is what adds its `plexavo` to your PATH — and
+only for that one terminal. So every time you open a new terminal you run
+`.\plexavo-venv\Scripts\Activate.ps1` again before using Plexavo. That
+re-activation is the trade-off for installing nothing globally. If
+PowerShell blocks the activate script, run
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once. Update with
+`pip install --upgrade plexavo` inside the activated environment.
+
+### AI-narrated explanations (optional, any OS)
+
+Plexavo is complete without this. If you have an Anthropic API key and
+want each finding rewritten as a full narrative (see [Cost](#cost)),
+install `"plexavo[ai]"` in place of `plexavo` in any command above.
 
 ### From source (for contributing, or trying an unreleased change)
 
@@ -277,6 +177,26 @@ git clone https://github.com/plexavo/plexavo.git
 cd plexavo
 uv pip install -e .   # or: pip install -e . (inside a venv)
 ```
+
+## Using Plexavo
+
+Just run:
+
+```bash
+plexavo
+```
+
+with no arguments. It walks you through choosing an AWS profile (or
+setting a new one up), picking whether you want an HTML or PDF report,
+then runs the scan and shows your 0-100 score with every finding and its
+plain-English fix. Nothing to memorise.
+
+On Windows Option 2, run `python -m plexavo` if the bare `plexavo`
+command is ever blocked.
+
+Scripting a scan into CI or a scheduled job? `plexavo scan --help` covers
+the flag-driven form (`--profile`, `--region`, `--report-html`,
+`--report-pdf`, `--explain`).
 
 ## Project structure
 
