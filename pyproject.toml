@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plexavo"
-version = "0.2.4"
+version = "0.2.5"
 description = "Open-source AWS misconfiguration scanner — runs with your own local AWS credentials, nothing sent to anyone else."
 readme = "README.md"
 license = { text = "AGPL-3.0-or-later" }
