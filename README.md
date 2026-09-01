@@ -1,151 +1,79 @@
 <div align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/plexavo-logo-dark.png">
-    <img src="assets/plexavo-logo-light.png" alt="Plexavo" height="90">
+    <img src="assets/plexavo-logo-light.png" alt="Plexavo" height="115">
   </picture>
 </div>
 
 # Plexavo
 
-An open-source AWS misconfiguration scanner that reads your account with
-your own local AWS credentials — nothing is ever handed to anyone else.
-Run it yourself, the same way you'd run `aws s3 ls`, and get a 0-100
-security score plus a plain-English report explaining exactly what's
-wrong, what an attacker would actually do with it, and the exact command
-to fix it.
+<div align="center">
+  <img src="assets/demo.gif" alt="Plexavo interactive scan demo" width="800">
+</div>
 
-Deterministic detection (pure Python/boto3, never AI) finds the
-misconfigurations. Claude only rewrites already-computed technical
-findings into a narrative a non-security founder can act on — it never
-decides what counts as a finding, and it's entirely optional (see
-[Cost](#cost) below).
+Plexavo is an open-source cloud security tool that audits AWS accounts
+for real-world misconfigurations. It runs entirely with your own local
+AWS credentials, the same way you'd run `aws s3 ls`, so nothing about
+your account is ever handed to anyone else. Each scan produces a 0-100
+security score and a plain-English report: what's wrong, what an
+attacker would actually do with it, and the exact command to fix it.
+
+Detection is pure Python/boto3, never AI. Claude only rewrites
+already-found technical findings into something a non-security founder
+can read, and it's entirely optional. See [Cost](#cost).
 
 ## What it checks
 
-**31 checks across 6 categories**, all validated against real, live AWS
-accounts (not just offline logic) unless a specific, stated limitation
-made that impossible — see the individual `docs/*-TEST-MATRIX.md` files
-for exactly which checks are fully verified and which have a documented,
-structural reason they can't be (e.g. some checks can only prove their
-"clean" case without disabling a real security control to test the "bad"
-case).
+31 checks across 6 categories, run against real AWS accounts:
 
-| Category | Checks | What it catches |
-|---|---|---|
-| IAM (`iam.py`, `iam_hygiene.py`) | 14 | Privilege escalation paths, wildcard admin, cross-account trust, root usage, dormant credentials |
-| Network (`network.py`) | 4 | Security groups and RDS instances exposed to the internet |
-| Storage (`storage.py`) | 3 | Public S3 buckets, via ACLs, bucket policies, or missing Block Public Access |
-| Encryption (`encryption.py`) | 3 | Unencrypted EBS volumes, RDS instances, S3 default encryption |
-| Logging (`logging.py`) | 4 | CloudTrail coverage/encryption, GuardDuty status |
-| Usage analysis (`usage.py`) | 2 (+1 skipped, duplicate of an IAM check) | Granted permissions never actually used, roles nobody has assumed in 90+ days — the hardest category, built last, uses real CloudTrail history |
+- **IAM**: privilege escalation paths, wildcard admin, cross-account
+  trust, root usage, dormant credentials
+- **Network**: security groups and RDS instances exposed to the
+  internet
+- **Storage**: public S3 buckets, via ACLs, bucket policies, or missing
+  Block Public Access
+- **Encryption**: unencrypted EBS volumes, RDS instances, S3 buckets
+- **Logging**: CloudTrail coverage and encryption, GuardDuty status
+- **Usage**: permissions granted but never used, roles nobody has
+  assumed in 90+ days
 
-Plus `scoring.py` (the 0-100 score) and `plexavo/report/ai_narration.py`
-(the opt-in AI layer).
+See the `docs/*-TEST-MATRIX.md` files for exactly how each check was
+verified.
 
-## Example output
+## Installation
 
-Illustrative example (a public S3 bucket, an unencrypted volume, a role that's
-never been assumed) — this is what a scan actually surfaces, including a
-finding's free template remediation (shown by default, no `--explain`
-needed; `--explain` would replace this panel with a full AI narrative
-instead):
-
-```
-Your AWS Security Score: 74/100 (Good)
-
-                                              Findings (3)
-┏━━━━━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Check   ┃ Severity ┃ Resource                           ┃ Detail                                     ┃
-┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ STOR-19 │ Critical │ arn:aws:s3:::taskflow-uploads-prod │ Bucket 'taskflow-uploads-prod' allows      │
-│         │          │                                    │ public read via bucket policy.             │
-│ ENC-29  │ Medium   │ vol-015506d04acb46ca9              │ EBS volume 'vol-015506d04acb46ca9' is not  │
-│         │          │                                    │ encrypted at rest.                         │
-│ USE-27  │ High     │ AWSSecurityScannerReadOnlyRole     │ Role 'AWSSecurityScannerReadOnlyRole' has  │
-│         │          │                                    │ never been assumed since creation.         │
-└─────────┴──────────┴────────────────────────────────────┴────────────────────────────────────────────┘
-
-╭────────────────────────────────────────── source: template ──────────────────────────────────────────╮
-│ STOR-19 — arn:aws:s3:::taskflow-uploads-prod                                                         │
-│                                                                                                      │
-│ IMPACT: Bucket 'taskflow-uploads-prod' doesn't have full S3 Block Public Access protection enabled.  │
-│ Without this protection, a single mistake — an overly broad bucket policy, a public ACL grant,       │
-│ someone copy-pasting a policy from a tutorial — immediately exposes every object to anyone on the    │
-│ internet via a plain s3:GetObject call, with nothing left to catch the mistake.                      │
-│                                                                                                      │
-│ CONFIDENCE: Confirmed                                                                                │
-│                                                                                                      │
-│ NEXT STEP: Turn on Block Public Access now: aws s3api put-public-access-block --bucket               │
-│ taskflow-uploads-prod --public-access-block-configuration                                            │
-│ "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"       │
-│                                                                                                      │
-│ FULL FIX DETAIL: Enable all four Block Public Access settings unless there's a specific, documented  │
-│ reason not to:                                                                                       │
-│ aws s3api put-public-access-block --bucket taskflow-uploads-prod --public-access-block-configuration │
-│ "BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true"        │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-
-Severity, confidence, and evidence are always separate signals, never merged
-into one label — a low-confidence Critical and a high-confidence Medium don't
-read the same. This particular finding has no Evidence line because it's a
-directly-observed fact with nothing uncertain about it — Evidence only appears
-when a check has a concrete account-state fact behind it (e.g. an IAM policy
-scoped by a Condition block, or a CloudTrail lookup that hit its page cap on
-`USE-26`), and Confidence only drops from "Confirmed" in that same situation.
-`--report-html`/`--report-pdf` render this same data as a full report; see
-[Cost](#cost) for what `--explain` needs and what it costs.
-
-## Install
-
-Plexavo is a command-line tool. Pick your OS below — every path installs
-it into its own isolated environment, so it never clashes with your other
-Python packages.
+Every path below installs Plexavo into its own isolated environment.
 
 ### macOS & Linux
-
-[uv](https://docs.astral.sh/uv/) puts a single `plexavo` command on your
-PATH, in every terminal, with nothing to activate:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # skip if you have uv
 uv tool install plexavo
 ```
 
-Update or remove later with `uv tool upgrade plexavo` /
-`uv tool uninstall plexavo`. Prefer [pipx](https://pipx.pypa.io/)?
-`pipx install plexavo` works the same way.
+Prefer [pipx](https://pipx.pypa.io/)? `pipx install plexavo` works the
+same way.
 
 ### Windows
 
-`uv` and `pipx` install fine, but the small `plexavo.exe` launcher they
-drop on your PATH is unsigned, and Windows Smart App Control refuses to
-run unsigned executables it doesn't recognise. The way around it is to
-run Plexavo through Python directly. Two ways — both isolated, pick one:
+`uv`/`pipx` still work, but the launcher they put on your PATH is
+unsigned, and Windows Smart App Control blocks it. Run Plexavo through
+Python instead, two options:
 
-#### Option 1 — uv (recommended)
+**Option 1, uv (recommended)**
 
 ```powershell
 uv tool install plexavo
-
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-
 if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Path $PROFILE -Force }
 Add-Content $PROFILE 'function plexavo { & "$env:APPDATA\uv\tools\plexavo\Scripts\python.exe" -m plexavo @args }'
 ```
 
-Open a new terminal and `plexavo` works exactly like it does on
-macOS/Linux.
+Open a new terminal. `plexavo` now works exactly like it does on
+macOS/Linux, routed through uv's signed Python instead of the blocked
+launcher.
 
-`uv tool install` still leaves the blocked `plexavo.exe` on your PATH.
-The line you add to your PowerShell profile shadows it with a command
-that calls uv's bundled `python.exe` directly — that Python is signed by
-the Python Software Foundation, so Smart App Control never stops it. You
-add it once; the `Set-ExecutionPolicy` line (also once) is what lets
-PowerShell load your profile at all. Update later with
-`uv tool upgrade plexavo`.
-
-#### Option 2 — virtual environment (no uv)
+**Option 2, plain venv**
 
 ```powershell
 py -m venv plexavo-venv
@@ -154,142 +82,70 @@ python -m pip install plexavo
 python -m plexavo
 ```
 
-Use `python -m` for everything inside the venv. Creating a venv also
-generates its own `pip.exe` and `plexavo.exe`, and those are exactly the
-unsigned launcher stubs Smart App Control blocks — but the venv's
-`python.exe` is a copy of your real Python with its signature intact, so
-going through it (`python -m pip`, `python -m plexavo`) always works.
+Use `python -m` for everything here too. The venv's own `pip.exe` and
+`plexavo.exe` are unsigned as well, only `python.exe` is signed.
 
-Activating the venv (`.\plexavo-venv\Scripts\Activate.ps1`) just points
-`python` at this environment for the current terminal — you re-run it in
-each new terminal, and `deactivate` leaves it. If PowerShell blocks the
-activate script, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
-once. Update with `python -m pip install --upgrade plexavo` inside the
-activated environment.
+### AI narration (optional)
 
-### AI-narrated explanations (optional, any OS)
+Want each finding rewritten as a full narrative? Install `"plexavo[ai]"`
+instead of `plexavo`, and set `ANTHROPIC_API_KEY`. See [Cost](#cost).
 
-Plexavo is complete without this. If you have an Anthropic API key and
-want each finding rewritten as a full narrative (see [Cost](#cost)),
-install `"plexavo[ai]"` in place of `plexavo` in any command above.
+## Using Plexavo
 
-### From source (for contributing, or trying an unreleased change)
+Run it with no arguments and it walks you through everything: picking an
+AWS profile, choosing HTML or PDF, then scanning and showing your score
+with every finding.
+
+```bash
+plexavo             # macOS/Linux, and Windows Option 1
+python -m plexavo   # Windows Option 2
+```
+
+<div align="center">
+  <img src="assets/screenshot-cli.png" alt="Plexavo interactive CLI" width="700">
+</div>
+
+## The report
+
+Reports are generated as HTML, PDF, or both. Every finding gets a free,
+template-based fix by default, no key, no cost. Full AI-written
+narration is offered automatically only when an `ANTHROPIC_API_KEY` is
+detected, see [Cost](#cost).
+
+<div align="center">
+  <img src="assets/screenshot-report.png" alt="Plexavo HTML report" width="700">
+</div>
+
+Severity, confidence, and evidence are always shown as separate signals.
+A low-confidence Critical never reads the same as a high-confidence
+Medium.
+
+## Cost
+
+Detection and the free templates always cost nothing. Live AI only runs
+with `--explain`, using **your own** `ANTHROPIC_API_KEY` in **your own**
+Anthropic account. Plexavo never sees your key and never calls the API
+without it. A full scan with `--explain` typically costs a few cents.
+
+## Contributing
 
 ```bash
 git clone https://github.com/plexavo/plexavo.git
 cd plexavo
-uv pip install -e .   # or: pip install -e . (inside a venv)
+uv pip install -e .
 ```
 
-## Using Plexavo
-
-Run it with no arguments and it walks you through everything — choosing an
-AWS profile (or setting a new one up), picking whether you want an HTML or
-PDF report, then running the scan and showing your 0-100 score with every
-finding and its plain-English fix. Nothing to memorise.
-
-```bash
-plexavo             # macOS/Linux, and Windows Option 1
-python -m plexavo   # Windows Option 2 — inside the activated venv
-```
-
-Scripting a scan into CI or a scheduled job? Add `scan` and flags —
-`plexavo scan --help` (or `python -m plexavo scan --help`) covers the
-flag-driven form (`--profile`, `--region`, `--report-html`,
-`--report-pdf`, `--explain`).
-
-## Project structure
-
-```
-plexavo/
-├── auth.py                    # local AWS credential resolution
-├── principals.py               # enumerates IAM users/roles + their policies
-├── findings.py                  # Finding data model, Severity enum
-├── scoring.py                    # 0-100 score from a list of Findings
-├── cli.py                         # `plexavo scan ...` entry point
-├── __main__.py                      # lets `python -m plexavo` run the CLI
-├── checks/
-│   ├── iam.py                       # IAM-01 to IAM-06 (privilege escalation)
-│   ├── iam_hygiene.py                # IAM-07 to IAM-14 (hygiene, cross-account trust)
-│   ├── network.py                     # NET-01 to NET-04
-│   ├── storage.py                      # STOR-19 to STOR-21
-│   ├── encryption.py                    # ENC-29 to ENC-31
-│   ├── logging.py                        # LOG-22 to LOG-25
-│   └── usage.py                           # USE-26, USE-27
-└── report/
-    ├── html_report.py               # assembles findings into HTML via Jinja2
-    ├── pdf.py                        # same data, rendered to PDF via fpdf2
-    ├── ai_narration.py                # opt-in Claude narration + the 10 free templates
-    ├── fonts/                          # bundled DejaVu Sans (PDF) + Geist (HTML) —
-    │                                     both self-hosted, zero external requests
-    └── templates/report.html.j2         # the HTML report template
-
-examples/
-└── quickstart-sandbox.tf       # one cheap, deliberately-public S3 bucket —
-                                  try the scanner without pointing it at
-                                  real infrastructure on day one
-
-tests/
-└── test_*.py                   # one per module, no AWS calls, run anytime:
-                                  python tests/test_iam_offline.py, etc.
-
-docs/
-├── *-TEST-MATRIX.md            # one per category — the actual grading
-│                                  record: what's verified, how, and any
-│                                  stated limitation. Start here if you
-│                                  want to know how much to trust a
-│                                  given check.
-├── COMPARISON.md               # honest, hands-on comparison against
-│                                  Prowler, ScoutSuite, and PMapper
-├── TECHNICAL-EXPLAINER.md      # implementation decisions and why
-└── HOW-IT-WORKS.md
-```
-
-## Cost
-
-Detection is free (pure Python/boto3), always, regardless of anything
-else in this section. Every scan also gets free Next Step / Full Fix
-Detail remediation wherever one of 10 hand-written templates matches the
-finding type — no flag, no API key, zero cost, on by default.
-
-Live AI only runs with `--explain`, and when it does it's used for
-*every* finding, including the 10 templated ones (a deliberate choice —
-"AI narration on" always means fully AI-written content, not a mix of
-template and AI), typically $0.01-0.02 per finding depending on answer
-length. A full scan with `--explain` on a real account is usually well
-under a dollar. This is **your own** `ANTHROPIC_API_KEY`, in **your own**
-Anthropic account — this project never sees your key, never embeds one of
-its own, and never calls the API on your behalf without you having set
-one. Not "free AI" — bring your own key, and a scan with it enabled costs
-a few cents.
-
-## Running the tests
-
-```bash
-pip install -e ".[dev]"
-for f in tests/test_*.py; do python "$f"; done
-```
-
-Each is self-contained — fake AWS API responses, no real credentials or
-network calls needed. See `docs/TEST-MATRIX.md` for how these map to
-live-AWS verification.
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) — in particular, the pattern for
-adding a new check.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the pattern used to add a
+new check.
 
 ## Security
 
-Found a vulnerability in the tool itself (not a misconfiguration in your
-own AWS account — that's the tool working correctly)? See
+Found a vulnerability in the tool itself, not a misconfiguration in your
+own AWS account (that's the tool working correctly)? See
 [`SECURITY.md`](SECURITY.md) for a private reporting path.
 
 ## License
 
-AGPL-3.0 — see [`LICENSE`](LICENSE). You can use, run, and modify this
-freely. If you run a modified version as a hosted service, you're
-required to publish those modifications too. This is deliberate: it's
-the specific protection against a well-resourced company taking this
-code and standing up a competing hosted product without ever
-contributing back.
+AGPL-3.0, see [`LICENSE`](LICENSE). Use, run, and modify it freely. If
+you run a modified version as a hosted service, you're required to
+publish those modifications too.
