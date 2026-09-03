@@ -172,7 +172,7 @@ def _parse_sections(raw_text: str) -> tuple[str, str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Templates for the 10 most common, narratively-generic check types.
+# Templates for the 11 most common, narratively-generic check types.
 # Every specific fact (resource names, chain targets) already lives in
 # the Finding's own fields, computed deterministically in Python — the
 # template just substitutes them into fixed prose matching the same
@@ -373,6 +373,31 @@ def _template_enc29(f: Finding) -> Explanation:
     )
 
 
+def _template_log25(f: Finding) -> Explanation:
+    return Explanation(
+        impact=(
+            "GuardDuty is not enabled in this region, so there is no automated threat detection watching the "
+            "account. GuardDuty continuously analyzes CloudTrail, VPC flow logs, and DNS logs for known-bad "
+            "signals — an access key suddenly used from a new country or a Tor exit node, an EC2 instance "
+            "calling a known crypto-mining or malware domain, someone running account-wide recon with calls "
+            "like iam:ListUsers, ec2:DescribeInstances, and s3:ListAllMyBuckets in quick succession. With it "
+            "off, all of that happens with nothing raising an alert, so a compromise is usually only noticed "
+            "once it causes visible damage or a surprise bill."
+        ),
+        how_to_fix=(
+            "Enable GuardDuty in this region, then confirm the detector is active:\n"
+            "aws guardduty create-detector --enable\n"
+            "aws guardduty list-detectors\n"
+            "GuardDuty is per-region, so repeat this in every region you run workloads in, or enable it for "
+            "the whole organization from your AWS Organizations management account. It is free for the first "
+            "30 days, then billed on the volume of logs analyzed (typically a few dollars a month for a small "
+            "account)."
+        ),
+        next_step="Turn GuardDuty on in this region now: aws guardduty create-detector --enable",
+        source="template",
+    )
+
+
 COMMON_CHECK_TEMPLATES = {
     "IAM-01": _template_iam01,
     "IAM-06": _template_iam06,
@@ -384,18 +409,19 @@ COMMON_CHECK_TEMPLATES = {
     "NET-02": _template_net02,
     "STOR-19": _template_stor19,
     "ENC-29": _template_enc29,
+    "LOG-25": _template_log25,
 }
 
 
 def explain_finding(finding: Finding, client=None, use_ai: bool = False) -> Explanation | None:
     """use_ai=False (default): route to the free template (zero API cost,
-    zero network) for the 10 most common, narratively-generic check
+    zero network) for the 11 most common, narratively-generic check
     types; every other check returns None (raw finding detail only — no
     API call is ever attempted in this mode, regardless of whether a key
     is configured). This is the always-on baseline — no flag needed to
     get free remediation guidance where a template exists.
 
-    use_ai=True: every finding, including the 10 templated ones, is sent
+    use_ai=True: every finding, including the 11 templated ones, is sent
     to Claude instead — deliberately bypasses the template shortcut so
     "AI narration on" always means fully AI-written content, never a mix
     of template and AI.

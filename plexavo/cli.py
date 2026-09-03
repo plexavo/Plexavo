@@ -83,7 +83,7 @@ def _build_parser() -> argparse.ArgumentParser:
                             "key. No key set, or a call fails for any reason? That finding falls back to raw "
                             "detail automatically, the scan never stops because of it. Off by default — without "
                             "it, findings still get free, no-API-key-needed remediation text wherever a template "
-                            "exists (10 common check types); --explain always uses live AI instead, for every "
+                            "exists (11 common check types); --explain always uses live AI instead, for every "
                             "finding, not just the non-templated ones.")
     scan.add_argument("--explain-limit", type=int, default=25,
                        help="Safety cap on how many findings get a live AI call when --explain is passed, in "
