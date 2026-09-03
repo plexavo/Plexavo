@@ -73,7 +73,7 @@ assert_true(_short_name("arn:aws:iam::111111111111:role/my-role") == "my-role", 
 assert_true(_short_name("arn:aws:s3:::my-bucket") == "my-bucket", "Extracts name after last : when no /")
 assert_true(_short_name("i-0abc123") == "i-0abc123", "Bare ID with no separators returned as-is")
 
-print("\n=== All 10 templates produce non-empty impact/next_step, with ZERO API contact ===")
+print("\n=== All 11 templates produce non-empty impact/next_step, with ZERO API contact ===")
 for check_id in COMMON_CHECK_TEMPLATES:
     finding = f(check_id)
     result = explain_finding(finding, client=ExplodingClient())
@@ -81,7 +81,19 @@ for check_id in COMMON_CHECK_TEMPLATES:
     assert_true(bool(result.impact.strip()), f"{check_id} impact is non-empty")
     assert_true(bool(result.how_to_fix.strip()), f"{check_id} how_to_fix is non-empty")
     assert_true(bool(result.next_step.strip()), f"{check_id} next_step is non-empty — this is new, every template must set it")
-assert_true(len(COMMON_CHECK_TEMPLATES) == 10, f"Exactly 10 templated checks exist (got {len(COMMON_CHECK_TEMPLATES)})")
+assert_true(len(COMMON_CHECK_TEMPLATES) == 11, f"Exactly 11 templated checks exist (got {len(COMMON_CHECK_TEMPLATES)})")
+
+print("\n=== LOG-25 (GuardDuty): account-level finding, template does not depend on a resource name ===")
+# LOG-25's real finding has resource_arn="account" — no per-resource
+# identifier to substitute, unlike bucket/volume/user templates. The
+# template must still produce complete, correct guidance.
+finding = f("LOG-25", resource_arn="account", raw_detail="GuardDuty is not enabled in this region.")
+result = explain_finding(finding, client=ExplodingClient())
+assert_true(result.source == "template", f"LOG-25 routes to template (got source={result.source})")
+assert_true("guardduty create-detector" in result.how_to_fix, "LOG-25 fix names the actual enable command")
+assert_true("guardduty create-detector" in result.next_step, "LOG-25 next_step names the actual enable command")
+assert_true("<PLACEHOLDER" not in result.how_to_fix and "<PLACEHOLDER" not in result.next_step,
+            "LOG-25 has no per-resource value to fill, so no placeholder should appear")
 
 print("\n=== Confidence/evidence are copied from the Finding, not decided by the template ===")
 finding = f("IAM-01", confidence="Likely — see note", evidence="Grant is scoped by a Condition block (aws:SourceIp)")
