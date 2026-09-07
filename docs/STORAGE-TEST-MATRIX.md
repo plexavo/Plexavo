@@ -1,4 +1,4 @@
-# Storage Test Matrix — STOR-19 through STOR-21
+# Storage Test Matrix — STOR-19 through STOR-22
 
 ## Account-level BPA diagnostic — result confirmed
 
@@ -47,3 +47,21 @@ plexavo scan --profile <your-testbed-profile>
 cd terraform-testbed
 terraform destroy
 ```
+
+## STOR-22 (added — fixes Hall of Bugs #1, reported by ThePettyReviewer)
+
+Checks `GetBucketLogging` for the `LoggingEnabled` key. Medium severity,
+not Critical like 19-21 — a bucket with no access logging isn't more
+reachable, it's just unreviewable after the fact.
+
+**Verification status: offline-mocked only, not yet run against the live
+Terraform testbed above.** `tests/test_storage_offline.py` proves: fires
+when `LoggingEnabled` is absent, does not fire when present, and a
+dedicated regression case reproduces the reported bug directly (a bucket
+with logging genuinely off, which previously produced no finding at all
+because no check existed). The testbed's `stor_clean` bucket and the
+STOR-19/20/21 fixtures don't currently attach an `aws_s3_bucket_logging`
+resource either way, so extending the testbed with an explicit
+logging-on and logging-off pair is the natural next step for a live
+confirmation, same rigor as 19-21 got. Stated honestly as a gap, not
+hidden — same pattern as every other limitation in this file.

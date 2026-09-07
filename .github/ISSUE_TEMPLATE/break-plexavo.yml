@@ -1,0 +1,80 @@
+name: "Break Plexavo"
+description: Found a case where Plexavo is wrong, incomplete, or confusing? Report it here.
+title: "[Break Plexavo] "
+labels: ["break-plexavo"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying to break Plexavo. No bounty, no money, public
+        credit only: a confirmed, genuinely new finding gets fixed,
+        shipped in a real release, and you get a permanent entry in
+        [`HALL_OF_BUGS.md`](../../HALL_OF_BUGS.md), credited by name.
+
+        **Before you submit, check this isn't already a known limitation:**
+        - Multi-hop privilege escalation chains (A can assume B, B can
+          assume C, C is admin). Only one-hop detection exists today.
+        - Cross-account trust resolution. Plexavo flags that a role
+          trusts an external account, but doesn't trace into that
+          account's own identities.
+        - IAM-12 (root account usage) intentionally has no blanket
+          remediation template, since the correct response depends on
+          the specific action taken.
+
+        Reporting one of these isn't a new find. Everything else is
+        fair game.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      description: What kind of issue is this?
+      options:
+        - False Positive
+        - False Negative
+        - Confusing Remediation
+        - Detection Bypass
+        - Edge Case
+    validations:
+      required: true
+
+  - type: textarea
+    id: aws-setup
+    attributes:
+      label: What AWS setup did you test?
+      description: >
+        Ideally a reproducible configuration: exact resource settings,
+        or a small Terraform/CloudFormation snippet someone else could
+        stand up to reproduce it. Reports without a way to reproduce
+        them are much harder to confirm and fix.
+      placeholder: |
+        e.g. an S3 bucket with a bucket policy granting s3:GetObject to
+        a specific external account ARN, no public ACL, Block Public
+        Access left off...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What did Plexavo report (or fail to report)?
+      placeholder: e.g. no finding at all / flagged as X when it should have been Y / raw finding with no remediation
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect it to report, and why?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked this isn't already a documented known limitation (see above)
+          required: true
+        - label: I included a way to reproduce this
+          required: true

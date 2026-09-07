@@ -1,4 +1,5 @@
-"""Category 3: Storage Exposure — checks 19-21, all Critical.
+"""Category 3: Storage Exposure — checks 19-22. 19-21 are Critical
+(public exposure); 22 is Medium (a visibility gap, not exposure itself).
 
 Scope note: check_19 checks BUCKET-level PublicAccessBlock only, per the
 blueprint's literal spec (GetBucketPublicAccessBlock). It does NOT check
@@ -127,8 +128,39 @@ def check_21_public_acl(s3, bucket_names: list) -> list[Finding]:
     return findings
 
 
+def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
+    """STOR-22: bucket has no server access logging configured.
+
+    GetBucketLogging always returns 200, even when logging was never set
+    up — the response body simply omits the 'LoggingEnabled' key in that
+    case. Unlike check_19's PublicAccessBlock, there's no distinct
+    "not configured" exception to catch here, confirmed against the real
+    S3 service model before writing this.
+
+    Medium, not Critical: this is a forensics gap, not an exposure by
+    itself — a bucket with logging off isn't more reachable than one with
+    it on, it's just unreviewable after the fact if something happens."""
+    findings = []
+    for name in bucket_names:
+        config = s3.get_bucket_logging(Bucket=name)
+        if "LoggingEnabled" in config:
+            continue
+        findings.append(Finding(
+            check_id="STOR-22",
+            title="S3 Bucket Access Logging Not Enabled",
+            severity=Severity.MEDIUM,
+            resource_arn=f"arn:aws:s3:::{name}",
+            raw_detail=f"Bucket '{name}' has no server access logging configured. "
+                       f"If this bucket is ever accessed, modified, or exfiltrated "
+                       f"from, there is no record of who did what — investigation "
+                       f"after the fact isn't possible.",
+            account_context=f"bucket={name}",
+        ))
+    return findings
+
+
 def run_all(session) -> list[Finding]:
-    """Run STOR-19 through STOR-21 against every bucket in the account —
+    """Run STOR-19 through STOR-22 against every bucket in the account —
     not just testbed buckets. A real scan must check everything."""
     s3 = session.client("s3")
     bucket_names = list_buckets(s3)
@@ -136,4 +168,5 @@ def run_all(session) -> list[Finding]:
     findings += check_19_missing_public_access_block(s3, bucket_names)
     findings += check_20_public_bucket_policy(s3, bucket_names)
     findings += check_21_public_acl(s3, bucket_names)
+    findings += check_22_access_logging_disabled(s3, bucket_names)
     return findings

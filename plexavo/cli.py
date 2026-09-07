@@ -155,7 +155,7 @@ def _run_scan(args) -> None:
         stage("Running checks NET-01 through NET-04")
         findings += network_checks.run_all(session)
 
-        stage("Running checks STOR-19 through STOR-21")
+        stage("Running checks STOR-19 through STOR-22")
         findings += storage_checks.run_all(session)
 
         stage("Running checks ENC-29 through ENC-31")

@@ -212,7 +212,7 @@ just claimed:**
   method; ours is pattern-matching against known technique shapes).
 - No compliance-framework mapping (CIS, PCI-DSS, SOC2, HIPAA) — Prowler
   bakes this in natively.
-- 31 checks vs. Prowler's 405 — an honest, expected breadth gap for an
+- 32 checks vs. Prowler's 405 — an honest, expected breadth gap for an
   early MVP.
 - Our own severity scale sometimes diverges from Prowler's without a
   documented rationale (IAM-11: we say High, Prowler says Medium) — worth
@@ -286,7 +286,7 @@ That gap is expected at this stage, not a design flaw.
   rather than the current account-wide LOG-22/23.
 - Longer-term: a lightweight compliance-tagging layer (which checks map to
   which CIS/SOC2 controls) — not to compete with Prowler's breadth, but to
-  make the existing 31 checks legible to a customer who's specifically
+  make the existing 32 checks legible to a customer who's specifically
   asking "am I SOC2-ready," which does come up even at the startup stage.
 
 ### Findings (accuracy and calibration)

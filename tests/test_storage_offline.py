@@ -12,11 +12,12 @@ from plexavo.checks import storage
 
 
 class FakeS3:
-    def __init__(self, buckets, pab=None, policies=None, acls=None):
+    def __init__(self, buckets, pab=None, policies=None, acls=None, logging=None):
         self._buckets = buckets
         self._pab = pab or {}
         self._policies = policies or {}
         self._acls = acls or {}
+        self._logging = logging or {}
 
     def list_buckets(self):
         return {"Buckets": [{"Name": b} for b in self._buckets]}
@@ -33,6 +34,13 @@ class FakeS3:
 
     def get_bucket_acl(self, Bucket):
         return self._acls.get(Bucket, {"Grants": []})
+
+    def get_bucket_logging(self, Bucket):
+        # Real S3 behavior: always 200, 'LoggingEnabled' simply absent when
+        # logging was never configured — never raises.
+        if Bucket in self._logging:
+            return {"LoggingEnabled": self._logging[Bucket]}
+        return {}
 
 
 FULL_PAB = {"BlockPublicAcls": True, "IgnorePublicAcls": True, "BlockPublicPolicy": True, "RestrictPublicBuckets": True}
@@ -53,6 +61,7 @@ def run_checks(s3, buckets):
     findings += storage.check_19_missing_public_access_block(s3, buckets)
     findings += storage.check_20_public_bucket_policy(s3, buckets)
     findings += storage.check_21_public_acl(s3, buckets)
+    findings += storage.check_22_access_logging_disabled(s3, buckets)
     return findings
 
 
@@ -113,6 +122,24 @@ s3 = FakeS3(["owner-only-bucket"], pab={"owner-only-bucket": FULL_PAB}, acls={
 })
 findings = run_checks(s3, ["owner-only-bucket"])
 assert_true(not any(f.check_id == "STOR-21" for f in findings), "Does NOT fire on an owner-only ACL grant")
+
+print("\n=== STOR-22: bucket has no access logging configured ===")
+s3 = FakeS3(["no-logging-bucket"], pab={"no-logging-bucket": FULL_PAB})
+findings = run_checks(s3, ["no-logging-bucket"])
+assert_true(any(f.check_id == "STOR-22" for f in findings), "Fires when access logging was never configured")
+
+print("\n=== FALSE POSITIVE GUARD: STOR-22 does not fire when access logging is enabled ===")
+s3 = FakeS3(["logged-bucket"], pab={"logged-bucket": FULL_PAB},
+            logging={"logged-bucket": {"TargetBucket": "log-archive", "TargetPrefix": "logged-bucket/"}})
+findings = run_checks(s3, ["logged-bucket"])
+assert_true(not any(f.check_id == "STOR-22" for f in findings), "Does NOT fire when LoggingEnabled is present")
+
+print("\n=== REGRESSION: reported bug (Hall of Bugs #1, found by ThePettyReviewer) — a bucket with logging genuinely off must be flagged ===")
+s3 = FakeS3(["reported-bucket"], pab={"reported-bucket": FULL_PAB})
+findings = run_checks(s3, ["reported-bucket"])
+matched = [f for f in findings if f.check_id == "STOR-22"]
+assert_true(bool(matched), "STOR-22 fires on a bucket with logging off (previously: no check existed at all, so nothing ever fired)")
+assert_true(bool(matched) and matched[0].severity.value == "Medium", "Severity is Medium — a visibility gap, not exposure like STOR-19/20/21")
 
 print(f"\n{'ALL PASSED' if failures == 0 else f'{failures} FAILURE(S)'}")
 sys.exit(1 if failures else 0)
