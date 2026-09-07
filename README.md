@@ -24,14 +24,14 @@ can read, and it's entirely optional. See [Cost](#cost).
 
 ## What it checks
 
-31 checks across 6 categories, run against real AWS accounts:
+32 checks across 6 categories, run against real AWS accounts:
 
 - **IAM**: privilege escalation paths, wildcard admin, cross-account
   trust, root usage, dormant credentials
 - **Network**: security groups and RDS instances exposed to the
   internet
 - **Storage**: public S3 buckets, via ACLs, bucket policies, or missing
-  Block Public Access
+  Block Public Access; buckets with no access logging configured
 - **Encryption**: unencrypted EBS volumes, RDS instances, S3 buckets
 - **Logging**: CloudTrail coverage and encryption, GuardDuty status
 - **Usage**: permissions granted but never used, roles nobody has
@@ -137,6 +137,14 @@ uv pip install -e .
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the pattern used to add a
 new check.
+
+## Break Plexavo
+
+Think you can make Plexavo miss something, or give confusing guidance?
+[Report it](../../issues/new?template=break-plexavo.yml). Every
+confirmed, genuinely new finding gets fixed and shipped, and you get a
+permanent credit in the [Hall of Bugs](HALL_OF_BUGS.md). No bounty,
+public credit only.
 
 ## Security
 
