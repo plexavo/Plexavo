@@ -139,7 +139,10 @@ def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
 
     Medium, not Critical: this is a forensics gap, not an exposure by
     itself — a bucket with logging off isn't more reachable than one with
-    it on, it's just unreviewable after the fact if something happens."""
+    it on. Whether object-level access is actually unreviewable after the
+    fact depends on whether it's captured another way (e.g. CloudTrail S3
+    data events), which Plexavo does not check — so the finding language
+    stays careful not to claim investigation is impossible."""
     findings = []
     for name in bucket_names:
         config = s3.get_bucket_logging(Bucket=name)
@@ -150,10 +153,13 @@ def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
             title="S3 Bucket Access Logging Not Enabled",
             severity=Severity.MEDIUM,
             resource_arn=f"arn:aws:s3:::{name}",
-            raw_detail=f"Bucket '{name}' has no server access logging configured. "
-                       f"If this bucket is ever accessed, modified, or exfiltrated "
-                       f"from, there is no record of who did what — investigation "
-                       f"after the fact isn't possible.",
+            raw_detail=f"Bucket '{name}' has no S3 server access logging configured. "
+                       f"Server access logging records object-level requests to the "
+                       f"bucket, which supports reconstructing who accessed or changed "
+                       f"what after the fact. If this bucket's access is already "
+                       f"tightly scoped and audited another way (for example CloudTrail "
+                       f"S3 data events, which Plexavo does not check), this finding may "
+                       f"be lower priority for that specific setup.",
             account_context=f"bucket={name}",
         ))
     return findings
