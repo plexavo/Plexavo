@@ -37,3 +37,19 @@ existed anywhere in the codebase. Fixed by adding STOR-22.
 Found by: @ThePettyReviewer
 Category: False Negative
 Fixed in: v0.2.7
+
+🏆 Bug #2
+STOR-22's finding text claimed that with server access logging off,
+"investigation after the fact isn't possible." That overclaims: S3
+object-level access is often captured by CloudTrail S3 data events
+instead, and Plexavo doesn't check for that — so it can't actually
+know a bucket is unauditable. For tightly scoped, otherwise-audited
+buckets (e.g. petabyte-scale private-subnet workloads) the old wording
+read as a false alarm. Fixed by rewriting the STOR-22 detail to
+describe what server access logging provides and to note the finding
+may be lower priority where access is already scoped and audited
+another way. Severity stays Medium — unchanged — since the default
+still needs to warn the majority of users for whom this is a real gap.
+Found by: @dghah
+Category: Inaccurate Finding Language
+Fixed in: v0.2.8 (pending release)
