@@ -47,5 +47,10 @@ assert_true("scan" in helptext.stdout, "help lists the scan subcommand")
 assert_true("usage: plexavo" in helptext.stdout,
             "usage line shows 'plexavo', not '__main__.py'")
 
+print("\n=== python -m plexavo scan --help documents --fail-on ===")
+scanhelp = run("-m", "plexavo", "scan", "--help")
+assert_true(scanhelp.returncode == 0, f"scan --help exits 0 (got {scanhelp.returncode})")
+assert_true("--fail-on" in scanhelp.stdout, "scan --help lists --fail-on")
+
 print(f"\n{'ALL PASSED' if failures == 0 else f'{failures} FAILURE(S)'}")
 sys.exit(1 if failures else 0)

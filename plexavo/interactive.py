@@ -327,4 +327,5 @@ def run_interactive() -> None:
         explain_limit=25,
         report_html=options["report_html"],
         report_pdf=options["report_pdf"],
+        fail_on=None,  # scheduled-run flag only; a person watching the score doesn't need it
     ))
