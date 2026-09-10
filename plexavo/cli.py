@@ -16,6 +16,7 @@ import os
 import random
 import sys
 import time
+from collections import Counter
 from contextlib import nullcontext
 
 from rich.console import Console
@@ -32,6 +33,7 @@ from plexavo.checks import storage as storage_checks
 from plexavo.checks import encryption as encryption_checks
 from plexavo.checks import logging as logging_checks
 from plexavo.checks import usage as usage_checks
+from plexavo.findings import Severity
 from plexavo.scoring import calculate_score
 from plexavo.report.ai_narration import explain_finding, COMMON_CHECK_TEMPLATES
 from plexavo.report.html_report import build_report_data, generate_html
@@ -58,6 +60,49 @@ FLAVOR_WORDS = [
     "Interrogating access keys",
     "Scrutinizing bucket policies",
 ]
+
+# --fail-on keyword -> Severity. One entry per Severity member; the test
+# suite asserts that stays true.
+FAIL_ON_LEVELS = {
+    "critical": Severity.CRITICAL,
+    "high": Severity.HIGH,
+    "medium": Severity.MEDIUM,
+    "low": Severity.LOW,
+}
+
+# Exit status when --fail-on trips. Deliberately not 1: exit 1 already
+# means "the scan could not run" (bad creds, no region), which a
+# scheduled job wants to treat differently from "the scan ran fine and
+# found something at your threshold".
+FAIL_ON_EXIT_CODE = 2
+
+
+def _findings_at_or_above(findings, level: str) -> list:
+    """Findings whose severity is at or above `level` (a FAIL_ON_LEVELS key)."""
+    threshold = FAIL_ON_LEVELS[level].rank
+    return [f for f in findings if f.severity.rank >= threshold]
+
+
+def _apply_fail_on(level, findings) -> None:
+    """When --fail-on is set, exit FAIL_ON_EXIT_CODE if any finding is at
+    or above `level`. Called only after any report has been written, so a
+    failing run still leaves you the report."""
+    if not level:
+        return
+    triggering = _findings_at_or_above(findings, level)
+    label = level.capitalize()
+    if not triggering:
+        console.print(f"\n[green]--fail-on {level}: no findings at or above {label}.[/green]")
+        return
+    counts = Counter(f.severity.value for f in triggering)
+    breakdown = ", ".join(
+        f"{counts[s]} {s}" for s in ("Critical", "High", "Medium", "Low") if counts.get(s)
+    )
+    console.print(
+        f"\n[bold red]--fail-on {level}: {len(triggering)} finding(s) at or above "
+        f"{label} ({breakdown}). Exiting with status {FAIL_ON_EXIT_CODE}.[/bold red]"
+    )
+    sys.exit(FAIL_ON_EXIT_CODE)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -95,6 +140,12 @@ def _build_parser() -> argparse.ArgumentParser:
                             "--explain replaces that with a full AI narrative for every finding instead.")
     scan.add_argument("--report-pdf", metavar="PATH", default=None,
                        help="Write a PDF report to PATH. Same --explain behavior as --report-html.")
+    scan.add_argument("--fail-on", choices=["critical", "high", "medium", "low"], default=None,
+                       help="After the scan, exit with status 2 if any finding is at or above this "
+                            "severity. Any report is still written first. Meant for scheduled runs: a "
+                            "non-zero exit makes GitHub Actions or cron flag the run, so a regression "
+                            "reaches you without opening a report by hand. Exit 1 still means the scan "
+                            "itself could not run. Off by default. See docs/automation.md.")
     return parser
 
 
@@ -178,6 +229,7 @@ def _run_scan(args) -> None:
 
     if not findings:
         console.print("[green]No findings.[/green]")
+        _apply_fail_on(args.fail_on, findings)
         return
 
     table = Table(title=f"Findings ({len(findings)})")
@@ -284,6 +336,10 @@ def _run_scan(args) -> None:
         if args.report_pdf:
             generate_pdf(report_data, args.report_pdf)
             console.print(f"[green]PDF report written to {os.path.abspath(args.report_pdf)}[/green]")
+
+    # Last thing in the scan: any report is on disk by now, so a non-zero
+    # exit here never costs you the report.
+    _apply_fail_on(args.fail_on, findings)
 
 
 def main():

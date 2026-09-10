@@ -105,6 +105,12 @@ python -m plexavo   # Windows Option 2
   <img src="assets/screenshot-cli.png" alt="Plexavo interactive CLI" width="700">
 </div>
 
+### Running it on a schedule
+
+Plexavo can also run unattended from cron or a GitHub Actions workflow,
+and flag a run when something regresses so you get notified without
+opening a report. See [`docs/automation.md`](docs/automation.md).
+
 ## The report
 
 Reports are generated as HTML, PDF, or both. Every finding gets a free,

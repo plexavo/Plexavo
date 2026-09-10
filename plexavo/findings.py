@@ -19,6 +19,19 @@ class Severity(Enum):
             Severity.LOW: 1,
         }[self]
 
+    @property
+    def rank(self) -> int:
+        """Ordering for threshold comparisons, Critical highest. Kept
+        separate from score_penalty: that one is a scoring weight, this
+        one is just an ordinal so `--fail-on` can ask "at or above X".
+        """
+        return {
+            Severity.CRITICAL: 4,
+            Severity.HIGH: 3,
+            Severity.MEDIUM: 2,
+            Severity.LOW: 1,
+        }[self]
+
 
 @dataclass
 class Finding:
