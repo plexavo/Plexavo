@@ -48,6 +48,12 @@ class Finding:
     evidence: str = ""       # the concrete account-state fact backing this finding — e.g.
                               # "granted=15, used=0, unused=15" or "last_used=never" — shown to the
                               # reader directly, not just fed silently into the AI prompt
+    chain_breaks_count: int = 0  # how many attack chains (plexavo/attack_paths.py) touch this
+                                   # finding's resource_arn — 0 means it isn't part of any chain.
+                                   # Set in a post-processing pass strictly after chains are built
+                                   # (attack_paths.apply_chain_impact), never during detection.
+                                   # Pure prioritization metadata — deliberately never feeds
+                                   # severity or score_penalty, see the no-optics-tuning rule.
 
     def to_dict(self) -> dict:
         return {
@@ -59,4 +65,5 @@ class Finding:
             "account_context": self.account_context,
             "confidence": self.confidence,
             "evidence": self.evidence,
+            "chain_breaks_count": self.chain_breaks_count,
         }
