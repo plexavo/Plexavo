@@ -26,6 +26,7 @@ from rich.table import Table
 from plexavo import __version__
 from plexavo.auth import get_local_session, get_account_id
 from plexavo.principals import list_all_principals
+from plexavo import attack_paths
 from plexavo.checks import iam as iam_checks
 from plexavo.checks import iam_hygiene
 from plexavo.checks import network as network_checks
@@ -170,8 +171,9 @@ def _run_scan(args) -> None:
     is_tty = console.is_terminal
     findings = []
     principals = []
+    chains = []
     stage_num = 0
-    total_stages = 8
+    total_stages = 9
     start_time = time.monotonic()
     flavor_pool = FLAVOR_WORDS.copy()
     random.shuffle(flavor_pool)
@@ -218,6 +220,10 @@ def _run_scan(args) -> None:
         stage("Running checks USE-26, USE-27 (usage analysis)")
         findings += usage_checks.run_all(session, principals)
 
+        stage("Building attack-path chains")
+        chains = attack_paths.build_attack_chains(session, principals)
+        attack_paths.apply_chain_impact(findings, chains)
+
     result = calculate_score(findings)
     rating_color = {"Excellent": "green", "Good": "green", "Fair": "yellow", "Poor": "orange3", "Critical": "red"}
     console.print(f"\n[bold {rating_color[result.rating]}]{result.summary_line()}[/bold {rating_color[result.rating]}]")
@@ -227,7 +233,16 @@ def _run_scan(args) -> None:
     else:
         console.print()
 
-    if not findings:
+    if chains:
+        console.print(f"[bold]{len(chains)} attack path{'s' if len(chains) != 1 else ''} identified[/bold] "
+                       f"— see the Visual Attack Path tab in the HTML report for detail.\n")
+
+    # Chains use their own independent exposure/relationship data, not
+    # the findings list — in principle a chain can exist even when every
+    # individual check came back clean, so "nothing to report" means both
+    # are empty, not just findings. Otherwise a real chain would silently
+    # never make it into a report.
+    if not findings and not chains:
         console.print("[green]No findings.[/green]")
         _apply_fail_on(args.fail_on, findings)
         return
@@ -322,7 +337,7 @@ def _run_scan(args) -> None:
             console.print("\n[yellow]Report includes free template remediation where available, raw technical "
                            "detail otherwise — pass --explain for full AI-written explanations on every "
                            "finding instead.[/yellow]")
-        report_data = build_report_data(findings, result, account_id, explanations)
+        report_data = build_report_data(findings, result, account_id, explanations, chains=chains)
 
         if args.report_html:
             html = generate_html(report_data)

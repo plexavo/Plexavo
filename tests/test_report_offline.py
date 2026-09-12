@@ -17,11 +17,14 @@ import tempfile
 
 from pypdf import PdfReader
 
+import re
+
 from plexavo.findings import Finding, Severity
 from plexavo.report.ai_narration import Explanation
 from plexavo.scoring import calculate_score
 from plexavo.report.html_report import build_report_data, generate_html, _markdown_inline
 from plexavo.report.pdf import generate_pdf, _prepare_markdown
+from plexavo.attack_paths import AttackChain, ChainNode
 
 failures = 0
 
@@ -143,6 +146,68 @@ with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
     max_adjustment = _max_spacing_adjustment(tmp.name)
     assert_true(max_adjustment < 10, f"No justify-stretch spacing (max adjustment: {max_adjustment}, should be near 0)")
 os.unlink(tmp.name)
+
+print("\n=== HTML: Visual Attack Path / Important / All Findings tabs (#3) ===")
+
+
+def _balanced_divs(html):
+    return len(re.findall(r"<div\b", html)) == len(re.findall(r"</div>", html))
+
+
+chain_findings = [
+    f("NET-01", Severity.CRITICAL, resource_arn="i-0a3f9c21", raw_detail="SSH open to the world."),
+    f("STOR-19", Severity.CRITICAL, resource_arn="arn:aws:s3:::totally-unrelated-bucket", raw_detail="x"),
+]
+chain1 = AttackChain(chain_id="path-1", template="ec2-role-s3", nodes=[
+    ChainNode(kind="internet", title="Internet", detail="Unauthenticated, from anywhere", resource_id="internet"),
+    ChainNode(kind="ec2", title="EC2 instance", detail="i-0a3f9c21 - sg-0d41 allows port 22 from the internet",
+              resource_id="i-0a3f9c21", finding_resource_arn="i-0a3f9c21"),
+    ChainNode(kind="iam-role", title="IAM role", detail="app-server-role - attached via instance profile",
+              resource_id="app-server-role", finding_resource_arn="arn:aws:iam::111111111111:role/app-server-role"),
+    ChainNode(kind="s3", title="S3 bucket", detail="plexavo-app-data - role policy grants GetObject",
+              resource_id="plexavo-app-data", finding_resource_arn="arn:aws:s3:::plexavo-app-data"),
+])
+chain2 = AttackChain(chain_id="path-2", template="ec2-role-role", nodes=[
+    ChainNode(kind="internet", title="Internet", detail="Unauthenticated, from anywhere", resource_id="internet"),
+    ChainNode(kind="ec2", title="EC2 instance", detail="i-0b2c111 - sg-x allows port 3389 from the internet",
+              resource_id="i-0b2c111", finding_resource_arn="i-0b2c111"),
+    ChainNode(kind="iam-role", title="IAM role", detail="jump-role - attached via instance profile",
+              resource_id="jump-role", finding_resource_arn="arn:aws:iam::111111111111:role/jump-role"),
+    # Same (kind, resource_id) as chain1's role node - a genuinely shared node across both chains.
+    ChainNode(kind="iam-role", title="IAM role", detail="app-server-role - admin-equivalent, reachable via sts:AssumeRole",
+              resource_id="app-server-role", finding_resource_arn="arn:aws:iam::111111111111:role/app-server-role"),
+])
+chains = [chain1, chain2]
+chain_score = calculate_score(chain_findings)
+
+data = build_report_data(chain_findings, chain_score, "634848780754", [None, None], chains=chains)
+html = generate_html(data)
+
+assert_true("Attack Path 1" in html and "Attack Path 2" in html, "Both attack paths get their own labeled section")
+assert_true(html.count('class="stepper"') == 2, "Two stepper blocks rendered, one per chain")
+assert_true('data-tab-panel="path"' in html and 'data-tab-panel="important"' in html and 'data-tab-panel="all"' in html, "All three tab panels present")
+assert_true(html.count('id="chain-iam-role-app-server-role"') == 1, "A node shared by both chains gets exactly one Important card, not two")
+assert_true("Breaks 2 of 2 attack paths if fixed" in html, "The shared node's card shows breaks 2 of 2")
+assert_true("Breaks 1 of 2 attack paths if fixed" in html, "A non-shared node's card shows breaks 1 of 2")
+assert_true('<span class="check-id">NET-01</span>' in html, "A chain node backed by a real finding shows that finding's real check_id, not a fabricated one")
+assert_true('<span class="check-id">IAM role</span>' in html, "A chain node with no backing finding falls back to its own title as the badge - never a fake check code")
+assert_true("STOR-19" in html, "A real finding that isn't part of any chain still appears in All Findings")
+assert_true("activate('path')" in html, "Default active tab is Visual Attack Path when chains exist")
+assert_true(_balanced_divs(html), "Rendered HTML has balanced <div>/</div> tags")
+
+print("\n=== HTML: zero chains gets an honest empty state, not a blank tab or an implied clean bill ===")
+empty_data = build_report_data(chain_findings, chain_score, "634848780754", [None, None], chains=[])
+empty_html = generate_html(empty_data)
+assert_true("No attack chains were identified in this scan" in empty_html, "Empty-state text shown on Visual Attack Path")
+assert_true("does not guarantee the account has no real attack paths" in empty_html, "Empty-state text stays honest - never implies a clean scan")
+assert_true("activate('all')" in empty_html, "Default active tab falls back to All Findings when there are zero chains")
+assert_true(_balanced_divs(empty_html), "Rendered HTML has balanced <div>/</div> tags with zero chains")
+
+print("\n=== HTML: chains= omitted entirely behaves like chains=[] (existing callers, e.g. pdf.py's shared build_report_data) ===")
+omitted_data = build_report_data(chain_findings, chain_score, "634848780754", [None, None])
+omitted_html = generate_html(omitted_data)
+assert_true("No attack chains were identified in this scan" in omitted_html, "Omitting chains= renders the same empty state as chains=[]")
+assert_true(_balanced_divs(omitted_html), "Rendered HTML has balanced <div>/</div> tags with chains= omitted")
 
 print(f"\n{'ALL PASSED' if failures == 0 else f'{failures} FAILURE(S)'}")
 sys.exit(1 if failures else 0)
