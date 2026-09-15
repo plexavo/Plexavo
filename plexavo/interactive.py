@@ -328,4 +328,5 @@ def run_interactive() -> None:
         report_html=options["report_html"],
         report_pdf=options["report_pdf"],
         fail_on=None,  # scheduled-run flag only; a person watching the score doesn't need it
+        format=None,  # agent/script output mode only; interactive mode always shows the normal console UI
     ))
