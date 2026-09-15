@@ -146,13 +146,21 @@ opening a report. See [`docs/automation.md`](docs/automation.md).
 
 ### 🤖 Using it from Claude Code
 
-Using [Claude Code](https://claude.com/claude-code)? Save
+Using [Claude Code](https://claude.com/claude-code)? Install the
+`plexavo-scan` plugin, then just ask: "scan my AWS account for security
+issues using Plexavo." It relays exactly what Plexavo found, and never
+runs a state-changing AWS command without asking first.
+
+```
+/plugin marketplace add plexavo/Plexavo
+/plugin install plexavo-scan@plexavo
+```
+
+Prefer not to add a marketplace? Save
 [`plexavo-scan/SKILL.md`](https://raw.githubusercontent.com/plexavo/Plexavo/main/.claude/skills/plexavo-scan/SKILL.md)
 to `~/.claude/skills/plexavo-scan/SKILL.md`
-(`%USERPROFILE%\.claude\skills\plexavo-scan\SKILL.md` on Windows), then
-just ask: "scan my AWS account for security issues using Plexavo." It
-relays exactly what Plexavo found, and never runs a state-changing AWS
-command without asking first.
+(`%USERPROFILE%\.claude\skills\plexavo-scan\SKILL.md` on Windows) instead,
+same skill, just without automatic updates.
 
 ## 📊 The report
 
