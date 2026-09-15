@@ -1,0 +1,14 @@
+{
+  "name": "plexavo",
+  "owner": {
+    "name": "Plexavo",
+    "url": "https://github.com/plexavo/Plexavo"
+  },
+  "plugins": [
+    {
+      "name": "plexavo-scan",
+      "source": "./plugins/plexavo-scan",
+      "description": "Run a Plexavo AWS security scan and get a conversational security briefing, right from Claude Code."
+    }
+  ]
+}

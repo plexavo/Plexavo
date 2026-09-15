@@ -1,0 +1,9 @@
+{
+  "name": "plexavo-scan",
+  "description": "Run a Plexavo AWS security scan and get a conversational security briefing, right from Claude Code.",
+  "version": "0.4.0",
+  "author": {
+    "name": "Kavee",
+    "url": "https://github.com/plexavo/Plexavo"
+  }
+}
