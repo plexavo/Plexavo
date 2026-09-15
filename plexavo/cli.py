@@ -12,6 +12,7 @@ credentials, the same way `aws s3 ls` does.
 """
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -38,6 +39,7 @@ from plexavo.findings import Severity
 from plexavo.scoring import calculate_score
 from plexavo.report.ai_narration import explain_finding, COMMON_CHECK_TEMPLATES
 from plexavo.report.html_report import build_report_data, generate_html
+from plexavo.report.json_report import build_json_report
 from plexavo.report.pdf import generate_pdf
 
 console = Console()
@@ -147,10 +149,34 @@ def _build_parser() -> argparse.ArgumentParser:
                             "non-zero exit makes GitHub Actions or cron flag the run, so a regression "
                             "reaches you without opening a report by hand. Exit 1 still means the scan "
                             "itself could not run. Off by default. See docs/automation.md.")
+    scan.add_argument("--format", choices=["json"], default=None,
+                       help="Print one machine-readable JSON object to stdout instead of the normal "
+                            "console output (findings table, panels, progress) — that output still "
+                            "happens, it just goes to stderr, so stdout is always exactly one valid "
+                            "JSON object. Meant for a calling agent/script, not a person at a terminal. "
+                            "--report-html/--report-pdf still write their files as normal alongside it.")
     return parser
 
 
 def _run_scan(args) -> None:
+    """Thin wrapper around _run_scan_impl: when --format json is set,
+    every existing console.print call in the impl still runs unchanged,
+    it's just redirected to stderr for the duration, so stdout stays
+    exactly one JSON object printed via plain print() at the end. Always
+    restored afterward (try/finally), including on sys.exit paths, so a
+    later in-process call (tests, or a future caller) never inherits a
+    silently-redirected console."""
+    json_mode = args.format == "json"
+    original_file = console.file
+    if json_mode:
+        console.file = sys.stderr
+    try:
+        _run_scan_impl(args, json_mode)
+    finally:
+        console.file = original_file
+
+
+def _run_scan_impl(args, json_mode: bool) -> None:
     console.print(f"[bold]Using AWS profile:[/bold] {args.profile or '(default)'}")
     try:
         session = get_local_session(profile_name=args.profile, region=args.region)
@@ -168,7 +194,11 @@ def _run_scan(args) -> None:
     # False (confirmed — Rich only renders it in real terminals), so
     # scripting users get the exact same plain progress lines as before,
     # not silence. This is a deliberate branch, not an oversight.
-    is_tty = console.is_terminal
+    # Forced off in json_mode regardless of the actual terminal, so
+    # progress always uses plain print-per-stage lines (to stderr), never
+    # a Rich Live/Status spinner — deterministic output for a calling
+    # agent/script, not a cosmetic call.
+    is_tty = console.is_terminal and not json_mode
     findings = []
     principals = []
     chains = []
@@ -244,6 +274,8 @@ def _run_scan(args) -> None:
     # never make it into a report.
     if not findings and not chains:
         console.print("[green]No findings.[/green]")
+        if json_mode:
+            print(json.dumps(build_json_report(findings, result, account_id, [], chains=chains), indent=2))
         _apply_fail_on(args.fail_on, findings)
         return
 
@@ -351,6 +383,10 @@ def _run_scan(args) -> None:
         if args.report_pdf:
             generate_pdf(report_data, args.report_pdf)
             console.print(f"[green]PDF report written to {os.path.abspath(args.report_pdf)}[/green]")
+
+    if json_mode:
+        json_payload = build_json_report(findings, result, account_id, explanations, chains=chains)
+        print(json.dumps(json_payload, indent=2))
 
     # Last thing in the scan: any report is on disk by now, so a non-zero
     # exit here never costs you the report.

@@ -244,6 +244,8 @@
     border-radius: 6px;
     padding: 8px 10px;
     margin: 4px 0 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
   }
 
   /* Next step — the one thing someone under time pressure should read
@@ -261,7 +263,7 @@
     margin-top: 4px;
   }
   .next-step .arrow { color: var(--good); font-weight: 700; flex-shrink: 0; }
-  .next-step p { margin: 0; font-size: 14px; color: var(--text); }
+  .next-step p { margin: 0; font-size: 14px; color: var(--text); overflow-wrap: break-word; word-break: break-word; }
   .next-step code {
     font-family: 'Geist Mono', monospace;
     background: var(--black);
@@ -397,8 +399,9 @@
   .step .node-detail { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
   .step-connector { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--faint); padding-top: 23px; margin: 0 -4px; min-width: 24px; }
 
-  .important-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
-  @media (max-width: 720px) { .important-grid { grid-template-columns: 1fr; } .stepper { flex-wrap: wrap; overflow-x: visible; } }
+  .important-grid { column-count: 2; column-gap: 14px; }
+  .important-grid .finding-card { break-inside: avoid; -webkit-column-break-inside: avoid; }
+  @media (max-width: 720px) { .important-grid { column-count: 1; } .stepper { flex-wrap: wrap; overflow-x: visible; } }
 
   .breaks-flag {
     font-family: 'Geist Mono', monospace;
