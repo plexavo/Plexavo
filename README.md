@@ -149,7 +149,9 @@ opening a report. See [`docs/automation.md`](docs/automation.md).
 Using [Claude Code](https://claude.com/claude-code)? Install the
 `plexavo-scan` plugin, then just ask: "scan my AWS account for security
 issues using Plexavo." It relays exactly what Plexavo found, and never
-runs a state-changing AWS command without asking first.
+runs a state-changing AWS command without asking first. Don't have Plexavo
+installed yet? It notices, and with your approval at each step installs uv
+and Plexavo for you, including the Windows Smart App Control workaround.
 
 ```
 /plugin marketplace add plexavo/Plexavo
