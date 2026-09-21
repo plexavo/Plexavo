@@ -16,7 +16,7 @@
       <img src="https://img.shields.io/pypi/v/plexavo?style=for-the-badge&logo=pypi&logoColor=white&label=PYPI" alt="PyPI version">
     </a>
     <a href="https://github.com/plexavo/plexavo/actions">
-      <img src="https://img.shields.io/github/actions/workflow/status/plexavo/plexavo/ci.yml?style=for-the-badge&label=BUILD" alt="Build status">
+      <img src="https://img.shields.io/github/actions/workflow/status/plexavo/plexavo/tests.yml?style=for-the-badge&label=BUILD" alt="Build status">
     </a>
   </p>
 
@@ -39,7 +39,7 @@ for real-world misconfigurations, using your own local AWS credentials
 the same way `aws s3 ls` does, so nothing about your account ever
 leaves your machine.
 
-Each scan produces a **0–100 security score** and a plain-English report:
+Each scan produces a **0-100 security score** and a plain-English report:
 what's wrong, what an attacker would actually do with it, and the exact
 command to fix it.
 
@@ -54,7 +54,7 @@ command to fix it.
 > conversational security briefing. See
 > [Using it from Claude Code](#using-it-from-claude-code).
 
-## ✦ What it checks
+## What it checks
 
 **32 checks across 6 categories**, run against real AWS accounts:
 
@@ -72,7 +72,26 @@ See `docs/*-TEST-MATRIX.md` for how each check was verified.
 > [!TIP]
 > **Don't just trust the number.** Plexavo keeps severity, confidence, and evidence as separate signals, so a low-confidence Critical does not read the same as a high-confidence Medium.
 
-## ⚡ Installation
+## How Plexavo works
+
+```text
+AWS account
+     ↓
+Plexavo deterministic checks
+     ↓
+Evidence + findings
+     ↓
+Severity / confidence / remediation
+     ↓
+HTML / PDF report
+     ↓
+Optional AI narration
+```
+
+The checks alone decide what counts as a finding. AI is optional and
+only helps explain results that already exist.
+
+## Installation
 
 Every path below installs Plexavo into its own isolated environment.
 
@@ -120,7 +139,7 @@ Use `python -m` for everything here too. The venv's own `pip.exe` and
 Want each finding rewritten as a full narrative? Install `"plexavo[ai]"`
 instead of `plexavo`, and set `ANTHROPIC_API_KEY`. See [Cost](#cost).
 
-## 🚀 Using Plexavo
+## Using Plexavo
 
 Run it with no arguments and it walks you through everything: picking an
 AWS profile, choosing HTML or PDF, then scanning and showing your score
@@ -135,16 +154,30 @@ python -m plexavo   # Windows Option 2
   <img src="assets/screenshot-cli.png" alt="Plexavo interactive CLI" width="700">
 </div>
 
-### Running it on a schedule
+## The report
 
-Plexavo can also run unattended from cron or a GitHub Actions workflow,
-and flag a run when something regresses so you get notified without
-opening a report. See [`docs/automation.md`](docs/automation.md).
+Reports are generated as HTML, PDF, or both. Every finding gets a free,
+template-based fix by default, no key, no cost. Full AI-written
+narration kicks in automatically once an `ANTHROPIC_API_KEY` is
+detected, see [Cost](#cost).
 
-> [!NOTE]
-> **Think of a scan as a snapshot, not a finish line.** Run it repeatedly to catch regressions as your infrastructure changes.
+<div align="center">
+  <img src="assets/screenshot-report.png" alt="Plexavo HTML report" width="700">
+</div>
 
-### 🤖 Using it from Claude Code
+## Cost
+
+Detection and the free templates always cost nothing. Live AI only runs
+with `--explain`, using **your own** `ANTHROPIC_API_KEY` in **your own**
+Anthropic account.
+
+Plexavo never sees your key and never calls the API without it. A full
+scan with `--explain` typically costs a few cents.
+
+> [!IMPORTANT]
+> **No hidden AI bill.** If you don't provide an Anthropic API key, Plexavo does not make an AI API call.
+
+## Using it from Claude Code
 
 Using [Claude Code](https://claude.com/claude-code)? Install the
 `plexavo-scan` plugin, then just ask: "scan my AWS account for security
@@ -166,62 +199,88 @@ to `~/.claude/skills/plexavo-scan/SKILL.md`
 (`%USERPROFILE%\.claude\skills\plexavo-scan\SKILL.md` on Windows) instead,
 same skill, just without automatic updates.
 
-## 📊 The report
+## Running it on a schedule
 
-Reports are generated as HTML, PDF, or both. Every finding gets a free,
-template-based fix by default, no key, no cost. Full AI-written
-narration kicks in automatically once an `ANTHROPIC_API_KEY` is
-detected, see [Cost](#cost).
+Plexavo can also run unattended from cron or a GitHub Actions workflow,
+and flag a run when something regresses so you get notified without
+opening a report. See [`docs/automation.md`](docs/automation.md).
 
-<div align="center">
-  <img src="assets/screenshot-report.png" alt="Plexavo HTML report" width="700">
-</div>
+> [!NOTE]
+> **Think of a scan as a snapshot, not a finish line.** Run it repeatedly to catch regressions as your infrastructure changes.
 
-## 💰 Cost
+## Want to help?
 
-Detection and the free templates always cost nothing. Live AI only runs
-with `--explain`, using **your own** `ANTHROPIC_API_KEY` in **your own**
-Anthropic account.
+You don't need to understand the whole codebase to contribute.
 
-Plexavo never sees your key and never calls the API without it. A full
-scan with `--explain` typically costs a few cents.
+There are several ways to help:
 
-> [!IMPORTANT]
-> **No hidden AI bill.** If you don't provide an Anthropic API key, Plexavo does not make an AI API call.
+- **Break Plexavo:** find a security blind spot or confusing result
+- **Add a security check:** extend Plexavo's AWS coverage
+- **Improve test coverage:** add or strengthen a test
+- **Improve documentation:** make Plexavo easier to understand
+- **Suggest an improvement:** tell us what would make a scan more useful
 
-## 🤝 Contributing
+> [!TIP]
+> **First contribution?** Start with issues labeled
+> [`good first issue`](../../issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22).
+> Not sure where to start? Open an issue or comment on an existing one.
+> You don't need to figure out the codebase alone.
 
-```bash
-git clone https://github.com/plexavo/plexavo.git
-cd plexavo
-uv pip install -e .
-```
+### Pick a way to contribute
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the pattern used to add a
-new check.
+| If you are... | You can... |
+|---|---|
+| A security researcher | Break Plexavo / report a blind spot |
+| A Python developer | Add a check or improve existing logic |
+| A cloud engineer | Test Plexavo against real AWS setups |
+| A tester | Reproduce bugs and improve test coverage |
+| A technical writer | Improve docs and examples |
+| Just curious | Run a scan and tell us what was confusing |
 
-### 🧨 Break Plexavo
+You don't need to be a Plexavo expert.
 
-Think you can make Plexavo miss something, or give confusing guidance?
+## Break Plexavo
+
+Security tools should be challenged.
+
+Run Plexavo and tell us if you find:
+
+- a security issue Plexavo misses
+- a false positive
+- a misleading severity
+- incorrect remediation
+- confusing report output
+- an AWS resource Plexavo doesn't understand
+- a case where the evidence isn't clear
+
+You don't need to write code. If you find something useful, open an issue
+and explain what happened.
 
 [**Report it →**](../../issues/new?template=break-plexavo.yml)
 
 Every confirmed, genuinely new finding gets fixed and shipped, and you
-get a permanent credit in the [Hall of Bugs](HALL_OF_BUGS.md).
+get a permanent credit in the [Hall of Bugs](HALL_OF_BUGS.md). Check the
+"what doesn't count" list there first, since some gaps are already
+documented.
 
 **No bounty. Public credit only.**
 
 > [!TIP]
 > **The best security tool is one that gets challenged.** If you find a blind spot, break it, report it, and help make the next scan better.
 
-## 🔐 Security
+## Contributing code
+
+Ready to write code? [`CONTRIBUTING.md`](CONTRIBUTING.md) covers setup,
+the pattern for adding a new check, and how to run the tests.
+
+## Security
 
 Found a vulnerability in the tool itself, not a misconfiguration in your
 own AWS account (that's the tool working correctly)?
 
 See [`SECURITY.md`](SECURITY.md) for a private reporting path.
 
-## 📄 License
+## License
 
 AGPL-3.0, see [`LICENSE`](LICENSE).
 
