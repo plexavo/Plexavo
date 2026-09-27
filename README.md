@@ -56,12 +56,13 @@ command to fix it.
 
 ## What it checks
 
-**32 checks across 6 categories**, run against real AWS accounts:
+**33 checks across 7 categories**, run against real AWS accounts:
 
 | Category | What Plexavo looks for |
 |---|---|
 | **IAM** | Privilege escalation paths, wildcard admin, cross-account trust, root usage, dormant credentials |
 | **Network** | Security groups and RDS instances exposed to the internet |
+| **EC2 Hardening** | Instance metadata service (IMDS) not requiring IMDSv2 - the setting behind the 2019 Capital One breach |
 | **Storage** | Public S3 buckets via ACLs, bucket policies, or missing Block Public Access; buckets with no access logging |
 | **Encryption** | Unencrypted EBS volumes, RDS instances, S3 buckets |
 | **Logging** | CloudTrail coverage and encryption, GuardDuty status |

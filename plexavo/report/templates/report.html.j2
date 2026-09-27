@@ -177,8 +177,16 @@
     border-radius: 4px;
     font-weight: 500;
     color: var(--text);
+    flex-shrink: 0;
   }
-  .finding-head .resource { color: var(--muted); }
+  /* min-width: 0 overrides the flex default of min-width: auto, which
+     otherwise refuses to shrink a long, unbroken resource identifier
+     (a full ARN, a bucket name with a random suffix) below its own
+     intrinsic width - the actual cause of a finding-card rendering wider
+     than its column and spilling text out of the box under the Important
+     tab's old multi-column layout. overflow-wrap/word-break match the
+     protection .evidence-block and .next-step p already had. */
+  .finding-head .resource { color: var(--muted); min-width: 0; overflow-wrap: break-word; word-break: break-word; }
 
   .finding-section { margin-bottom: 10px; }
   .finding-section:last-child { margin-bottom: 0; }
@@ -399,9 +407,19 @@
   .step .node-detail { font-family: 'Geist Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
   .step-connector { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--faint); padding-top: 23px; margin: 0 -4px; min-width: 24px; }
 
-  .important-grid { column-count: 2; column-gap: 14px; }
-  .important-grid .finding-card { break-inside: avoid; -webkit-column-break-inside: avoid; }
-  @media (max-width: 720px) { .important-grid { column-count: 1; } .stepper { flex-wrap: wrap; overflow-x: visible; } }
+  /* Plain block stack - the same mechanism .severity-section (All
+     Findings) already uses, not CSS multi-column. Multi-column
+     (column-count) sizes columns to a fixed width and can't reliably
+     absorb a card whose content is unusually tall or wide - a long
+     resource identifier or a big Full Fix Detail block could render a
+     card narrower than its neighbor or force it to overflow its column
+     rather than simply growing taller, which is exactly what a plain
+     block-flow div can never do. Traded away the 2-column density on
+     purpose: correctness for arbitrarily-sized finding content over a
+     denser layout. .finding-card's own margin-bottom: 14px still supplies
+     the vertical spacing between cards, same as every other tab. */
+  .important-grid { margin-bottom: 8px; }
+  @media (max-width: 720px) { .stepper { flex-wrap: wrap; overflow-x: visible; } }
 
   .breaks-flag {
     font-family: 'Geist Mono', monospace;

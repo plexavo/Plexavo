@@ -25,6 +25,7 @@ separately by treating any non-wildcard boundary as disqualifying.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -145,21 +146,65 @@ def list_all_principals(session) -> list[Principal]:
     return principals
 
 
+_ACTION_PATTERN_CACHE: dict[str, "re.Pattern[str]"] = {}
+
+
+def _compile_action_pattern(pattern: str) -> "re.Pattern[str]":
+    """Compile a single Action/NotAction entry into a regex. IAM supports
+    exactly two wildcard characters here: '*' (any run of characters,
+    including none) anywhere in the string, not just as a trailing
+    "service:*", and '?' (exactly one character) - no other glob syntax
+    (no bracket classes). Cached since the same policy statements get
+    matched against many candidate actions across a scan."""
+    cached = _ACTION_PATTERN_CACHE.get(pattern)
+    if cached is not None:
+        return cached
+    regex_parts = []
+    for ch in pattern:
+        if ch == "*":
+            regex_parts.append(".*")
+        elif ch == "?":
+            regex_parts.append(".")
+        else:
+            regex_parts.append(re.escape(ch))
+    compiled = re.compile("^" + "".join(regex_parts) + "$")
+    _ACTION_PATTERN_CACHE[pattern] = compiled
+    return compiled
+
+
+def _action_pattern_matches(pattern: str, action: str) -> bool:
+    """Does this single Action/NotAction entry (already lowercased) match
+    `action` (already lowercased)? Plain equality first as a fast path -
+    only patterns that actually contain a wildcard character pay for
+    regex compilation/matching."""
+    if "*" not in pattern and "?" not in pattern:
+        return pattern == action
+    return _compile_action_pattern(pattern).match(action) is not None
+
+
 def _action_matches(statement: dict, action: str) -> bool:
     """Does this statement's Action/NotAction field match `action`,
     independent of Effect? Shared by statement_grants (Allow) and
-    statement_denies (Deny) so there's one matching implementation."""
-    service, _, _verb = action.partition(":")
+    statement_denies (Deny) so there's one matching implementation.
+
+    Matches IAM's real wildcard semantics: '*' anywhere in an Action
+    entry matches any run of characters, so "s3:Get*" correctly matches
+    "s3:GetObject" - not just a literal "*" or an exact "service:*". The
+    previous version only recognized a literal "*", an exact action, or
+    a full "service:*" wildcard, so it silently missed every AWS-managed
+    policy written with a prefix wildcard (e.g. every *ReadOnlyAccess-
+    style managed policy uses "s3:Get*"/"s3:List*", not "s3:*") - those
+    grants were invisible to everything built on this function:
+    statement_grants/statement_denies, find_blocking_deny,
+    action_within_boundary, has_full_wildcard_deny, and
+    checks/iam.py's is_admin_equivalent, plus attack_paths.py's chain
+    detection."""
+    action = action.lower()
     if "NotAction" in statement and "Action" not in statement:
-        excluded = {a.lower() for a in _normalize(statement.get("NotAction"))}
-        return not (
-            action.lower() in excluded
-            or f"{service.lower()}:*" in excluded
-            or "*" in excluded
-        )
+        excluded = _normalize(statement.get("NotAction"))
+        return not any(_action_pattern_matches(a.lower(), action) for a in excluded)
     for a in _normalize(statement.get("Action")):
-        a = a.lower()
-        if a == "*" or a == action.lower() or a == f"{service.lower()}:*":
+        if _action_pattern_matches(a.lower(), action):
             return True
     return False
 

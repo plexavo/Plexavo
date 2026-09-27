@@ -195,6 +195,17 @@ assert_true("STOR-19" in html, "A real finding that isn't part of any chain stil
 assert_true("activate('path')" in html, "Default active tab is Visual Attack Path when chains exist")
 assert_true(_balanced_divs(html), "Rendered HTML has balanced <div>/</div> tags")
 
+print("\n=== HTML: Important tab uses the same plain block-stack mechanism as All Findings, not CSS multi-column ===")
+# Regression guard for the fix: CSS multi-column (column-count) could size a card
+# narrower than its neighbor or force it to overflow its column when content is
+# unusually tall/wide (a long resource identifier, a big Full Fix Detail block) -
+# a plain block-flow div (what .severity-section, All Findings' own container,
+# already uses) can only ever grow taller, never overflow sideways.
+assert_true("column-count:" not in html, "Important tab no longer uses CSS multi-column layout at all")
+assert_true(".important-grid .finding-card { break-inside" not in html, "The now-pointless break-inside-avoid rule for the old column layout is gone too")
+assert_true(".finding-head .resource { color: var(--muted); min-width: 0; overflow-wrap: break-word; word-break: break-word; }" in html,
+            "The actual root cause is fixed too: a long, unbroken resource identifier can shrink and wrap instead of forcing the card wider than its container")
+
 print("\n=== HTML: zero chains gets an honest empty state, not a blank tab or an implied clean bill ===")
 empty_data = build_report_data(chain_findings, chain_score, "634848780754", [None, None], chains=[])
 empty_html = generate_html(empty_data)
