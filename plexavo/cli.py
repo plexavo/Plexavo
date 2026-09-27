@@ -31,6 +31,7 @@ from plexavo import attack_paths
 from plexavo.checks import iam as iam_checks
 from plexavo.checks import iam_hygiene
 from plexavo.checks import network as network_checks
+from plexavo.checks import compute as compute_checks
 from plexavo.checks import storage as storage_checks
 from plexavo.checks import encryption as encryption_checks
 from plexavo.checks import logging as logging_checks
@@ -203,7 +204,7 @@ def _run_scan_impl(args, json_mode: bool) -> None:
     principals = []
     chains = []
     stage_num = 0
-    total_stages = 9
+    total_stages = 10
     start_time = time.monotonic()
     flavor_pool = FLAVOR_WORDS.copy()
     random.shuffle(flavor_pool)
@@ -237,6 +238,9 @@ def _run_scan_impl(args, json_mode: bool) -> None:
 
         stage("Running checks NET-01 through NET-04")
         findings += network_checks.run_all(session)
+
+        stage("Running check EC2-32 (IMDSv2 enforcement)")
+        findings += compute_checks.run_all(session)
 
         stage("Running checks STOR-19 through STOR-22")
         findings += storage_checks.run_all(session)

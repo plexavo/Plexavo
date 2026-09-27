@@ -180,6 +180,37 @@ if chains:
     assert_true(c.nodes[3].resource_id == "plexavo-app-data", "S3 node resource_id is the actual granted bucket, not the unrelated one")
     assert_true("GetObject" in c.nodes[3].detail and "PutObject" in c.nodes[3].detail, "S3 node detail names the granted actions")
 
+# === REGRESSION: Template A via a prefix-wildcard AWS-managed policy (e.g. AmazonS3ReadOnlyAccess) ===
+# Found scanning the real "capital_one stack" demo terraform: the instance role there
+# has nothing but the AWS-managed AmazonS3ReadOnlyAccess policy attached, whose real
+# document (confirmed live via `aws iam get-policy-version`) grants
+# Action: ["s3:Get*", "s3:List*", "s3:Describe*", ...], Resource: "*" - a prefix
+# wildcard, not "s3:*" and not the literal action names. The old _action_matches()
+# only recognized an exact action, a literal "*", or a full "service:*" wildcard, so
+# this grant was invisible and produced zero chains on a genuinely exploitable role.
+print("\n=== REGRESSION: prefix-wildcard managed policy (AmazonS3ReadOnlyAccess-style) still builds the chain ===")
+readonly_role = role("readonly-waf-role", [allow(
+    Action=["s3:Get*", "s3:List*", "s3:Describe*", "s3-object-lambda:Get*", "s3-object-lambda:List*"],
+    Resource="*",
+)])
+chains = build(
+    dict(
+        ec2=FakeEC2([sg("sg-443", "public-tier", [open_rule(443, 443)])],
+                    [instance("i-capitalone", "waf-analog", "1.2.3.7", ["sg-443"], PROFILE_ARN)]),
+        iam=FakeIAM({"app-profile": readonly_role.arn}),
+        s3=FakeS3(["plexavo-demo-customer-data"]),
+    ),
+    [readonly_role],
+)
+assert_true(len(chains) == 1, "Prefix-wildcard-only grant (s3:Get*/s3:List*) still produces a chain")
+if chains:
+    c = chains[0]
+    assert_true(c.template == "ec2-role-s3", "Template is ec2-role-s3")
+    assert_true(c.nodes[3].resource_id == "plexavo-demo-customer-data", "S3 node resolves to the actual bucket")
+    assert_true("GetObject" in c.nodes[3].detail, "S3 node detail names the actually-granted action (GetObject via s3:Get*)")
+    assert_true("PutObject" not in c.nodes[3].detail and "DeleteObject" not in c.nodes[3].detail,
+                "Only the actions the wildcard genuinely covers are named - ReadOnlyAccess never grants Put/Delete")
+
 # === ACCURACY GUARD: unconditioned explicit Deny suppresses the S3 hop entirely ===
 print("\n=== ACCURACY GUARD: explicit Deny on the S3 grant suppresses the chain ===")
 denied_role = role("denied-role", [
