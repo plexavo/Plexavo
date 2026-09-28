@@ -40,9 +40,11 @@ from plexavo.principals import (
     statement_has_wildcard_action,
     resource_is_wildcard,
     resource_includes,
+    resource_grants_any_role,
     find_blocking_deny,
     has_full_wildcard_deny,
     action_within_boundary,
+    _condition_adjustment,
     _normalize,
 )
 
@@ -86,25 +88,6 @@ def _all_statements(principal: Principal):
     for policy_name, statements in principal.policies:
         for stmt in statements:
             yield policy_name, stmt
-
-
-def _condition_adjustment(stmt: dict) -> tuple[Severity, str, str]:
-    """A Condition block on the ALLOW statement itself means we can't
-    safely claim this grant is unconditional. Downgrade Critical -> High
-    and say so via confidence/evidence — never as free text baked into
-    raw_detail, so the report can show "this needs a human look" as a
-    distinct, structured fact instead of a sentence buried in prose.
-    Returns (severity, confidence, evidence)."""
-    condition = stmt.get("Condition")
-    if condition:
-        keys = ", ".join(condition.keys())
-        return (
-            Severity.HIGH,
-            "Likely — see note",
-            f"Grant is scoped by a Condition block ({keys}) — not evaluated automatically; "
-            f"whether it meaningfully restricts access needs a manual look.",
-        )
-    return Severity.CRITICAL, "Confirmed", ""
 
 
 def _apply_deny_and_boundary(principal: Principal, action: str, resource_arn: str | None,
@@ -394,11 +377,11 @@ def check_05_assumerole_chain_to_admin(principals: list[Principal]) -> list[Find
                 continue
             if not statement_grants(stmt, {"sts:AssumeRole"}):
                 continue
-            if resource_is_wildcard(stmt):
-                continue  # that's check IAM-06, not IAM-05
+            if resource_grants_any_role(stmt):
+                continue  # that's check IAM-06, not IAM-05 - includes "role/*", not just a literal "*"
             base_severity, base_confidence, base_evidence = _condition_adjustment(stmt)
-            for target_arn in _normalize(stmt.get("Resource")):
-                if target_arn not in admin_roles or target_arn == p.arn:
+            for target_arn in admin_roles:
+                if target_arn == p.arn or not resource_includes(stmt, target_arn):
                     continue
                 result = _apply_deny_and_boundary(p, "sts:AssumeRole", target_arn, base_severity, base_confidence, base_evidence)
                 if result is None:
@@ -422,7 +405,18 @@ def check_05_assumerole_chain_to_admin(principals: list[Principal]) -> list[Find
 
 
 def check_06_wildcard_assumerole(principals: list[Principal]) -> list[Finding]:
-    """IAM-06: sts:AssumeRole on effectively Resource:* — can assume any role in the account."""
+    """IAM-06: sts:AssumeRole on effectively Resource:* — can assume any role
+    in the account. Fires on a literal "*" AND on a role-scoped prefix
+    wildcard like "arn:aws:iam::123456789012:role/*" (resource_grants_any_role)
+    - the previous version only recognized the literal "*" case, silently
+    missing the far more common role/* form (Hall of Bugs, found by
+    fusiontechstrategies). Known residual gap, not expanded here: a Deny or
+    boundary scoped to the same role/* pattern (rather than a literal "*")
+    is not recognized as suppressing this finding, since
+    _apply_deny_and_boundary's resource_arn=None path only checks
+    resource_is_wildcard on the Deny/boundary side too - narrower than a
+    fix would need to be, but the safe-direction failure mode (a rare
+    over-report, never an under-report)."""
     findings = []
     for p in principals:
         for policy_name, stmt in _all_statements(p):
@@ -430,7 +424,7 @@ def check_06_wildcard_assumerole(principals: list[Principal]) -> list[Finding]:
                 continue
             if not statement_grants(stmt, {"sts:AssumeRole"}):
                 continue
-            if not resource_is_wildcard(stmt):
+            if not resource_grants_any_role(stmt):
                 continue
             severity, confidence, evidence = _condition_adjustment(stmt)
             result = _apply_deny_and_boundary(p, "sts:AssumeRole", None, severity, confidence, evidence)
