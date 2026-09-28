@@ -28,6 +28,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from plexavo.findings import Severity
+
 
 @dataclass
 class Principal:
@@ -234,6 +236,13 @@ def statement_has_wildcard_action(statement: dict) -> bool:
 
 
 def resource_is_wildcard(statement: dict) -> bool:
+    """True if this statement's Resource is literally Resource:* (or it
+    has a NotResource, an unbounded 'everything except X' grant). Deliberately
+    narrow: a prefix-wildcard ARN like "arn:aws:s3:::bucket/*" is NOT treated
+    as wildcard here - that's an extremely common, correctly-scoped pattern
+    (object-level access to one bucket), not "grants against anything." Real
+    prefix-wildcard ARN matching against a specific target lives in
+    resource_includes() below."""
     if "Resource" in statement:
         return "*" in _normalize(statement.get("Resource"))
     if "NotResource" in statement:
@@ -241,14 +250,51 @@ def resource_is_wildcard(statement: dict) -> bool:
     return False
 
 
+def _resource_pattern_matches(pattern: str, arn: str) -> bool:
+    """Does this single Resource/NotResource entry match `arn`? Same two
+    AWS wildcard characters as Action ('*' any run of characters, '?'
+    exactly one), reusing the same glob-to-regex compiler as
+    _action_pattern_matches - but ARNs are case-sensitive (unlike action
+    names), so this never lowercases either side."""
+    if "*" not in pattern and "?" not in pattern:
+        return pattern == arn
+    return _compile_action_pattern(pattern).match(arn) is not None
+
+
 def resource_includes(statement: dict, target_arn: str) -> bool:
+    """Does this statement's Resource/NotResource field cover target_arn?
+
+    Real IAM wildcard semantics via _resource_pattern_matches: '*' anywhere
+    in a Resource entry matches any run of characters, so
+    "arn:aws:iam::123456789012:role/*" correctly matches
+    "arn:aws:iam::123456789012:role/AdminRole" - not just a literal "*" or
+    an exact string. The previous version only recognized a literal "*" or
+    exact ARN equality, so a plain prefix-wildcard resource (as ordinary as
+    an sts:AssumeRole grant on "role/*") was invisible to
+    find_blocking_deny/action_within_boundary and every checks/iam.py call
+    site that checks a specific target ARN - Hall of Bugs, found by
+    fusiontechstrategies."""
     if "NotResource" in statement and "Resource" not in statement:
-        excluded = set(_normalize(statement.get("NotResource")))
-        if "*" in excluded:
-            return False
-        return target_arn not in excluded
+        excluded = _normalize(statement.get("NotResource"))
+        return not any(_resource_pattern_matches(r, target_arn) for r in excluded)
     resources = _normalize(statement.get("Resource"))
-    return "*" in resources or target_arn in resources
+    return any(_resource_pattern_matches(r, target_arn) for r in resources)
+
+
+def resource_grants_any_role(statement: dict) -> bool:
+    """True if this statement's Resource field would let the principal
+    assume ANY IAM role in the account, now or in the future - a bare "*"
+    (resource_is_wildcard), or an ARN pattern whose role-name segment is
+    itself a bare wildcard (e.g. "arn:aws:iam::123456789012:role/*").
+    Deliberately narrower than a general prefix-wildcard match:
+    "role/Admin*" only reaches roles named Admin*, not every role, and
+    must NOT be treated the same as "role/*" - that distinction is exactly
+    what IAM-06 ("can assume ANY role") needs and IAM-05 (a specific named
+    target) does not. Used only for sts:AssumeRole's Resource field -
+    scoped to role ARNs on purpose."""
+    if resource_is_wildcard(statement):
+        return True
+    return any(r.endswith("role/*") for r in _normalize(statement.get("Resource")))
 
 
 def action_within_boundary(principal: Principal, action: str, resource_arn: str | None) -> bool:
@@ -296,6 +342,34 @@ def find_blocking_deny(principal: Principal, action: str, resource_arn: str | No
                 continue
             return True, bool(stmt.get("Condition"))
     return False, False
+
+
+def _condition_adjustment(stmt: dict) -> tuple[Severity, str, str]:
+    """A Condition block on the grant statement itself means we can't
+    safely claim it's unconditional. Downgrade Critical -> High and say so
+    via confidence/evidence — never as free text baked into raw_detail, so
+    the report can show "this needs a human look" as a distinct,
+    structured fact instead of a sentence buried in prose. Returns
+    (severity, confidence, evidence).
+
+    Moved here from checks/iam.py (unchanged behavior) so checks/storage.py
+    can reuse it too — Hall of Bugs, found by fusiontechstrategies: STOR-20
+    fired at full Critical/Confirmed on a Principal:* bucket policy even
+    when a Condition (e.g. aws:PrincipalOrgID) genuinely restricted it,
+    exactly the uncertainty this function already exists to handle for
+    every IAM check. A generic statement-level helper with no IAM-specific
+    coupling, so it belongs in this module alongside the other shared
+    policy-statement evaluators, not duplicated per check module."""
+    condition = stmt.get("Condition")
+    if condition:
+        keys = ", ".join(condition.keys())
+        return (
+            Severity.HIGH,
+            "Likely — see note",
+            f"Grant is scoped by a Condition block ({keys}) — not evaluated automatically; "
+            f"whether it meaningfully restricts access needs a manual look.",
+        )
+    return Severity.CRITICAL, "Confirmed", ""
 
 
 def has_full_wildcard_deny(principal: Principal) -> bool:

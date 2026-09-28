@@ -243,7 +243,12 @@ def _run_scan_impl(args, json_mode: bool) -> None:
         findings += compute_checks.run_all(session)
 
         stage("Running checks STOR-19 through STOR-22")
-        findings += storage_checks.run_all(session)
+        storage_findings, skipped_buckets = storage_checks.run_all(session)
+        findings += storage_findings
+        if skipped_buckets:
+            console.print(f"[yellow]{len(skipped_buckets)} bucket(s) could not be fully evaluated for "
+                           f"STOR-19/20/21/22 (AccessDenied) — treat their public-access/ACL/logging "
+                           f"status as unknown, not confirmed safe: {', '.join(skipped_buckets)}[/yellow]")
 
         stage("Running checks ENC-29 through ENC-31")
         findings += encryption_checks.run_all(session)

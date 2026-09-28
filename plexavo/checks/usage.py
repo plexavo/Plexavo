@@ -71,6 +71,22 @@ Real, stated scope limits for check_26, not hidden:
   yet — not because they're provably excess. This is a real, structural
   limitation of usage-based analysis on quiet accounts, not a bug to
   fix; noted here so it isn't mistaken for one during grading.
+- CONFIRMED REAL BUG, found via a Hall of Bugs report (fusiontechstrategies):
+  CloudTrail's LookupEvents API returns MANAGEMENT events only, never data
+  events, regardless of trail configuration or actual activity — confirmed
+  against AWS's own CloudTrail documentation. Actions like s3:GetObject/
+  s3:PutObject, dynamodb:GetItem/PutItem, lambda:InvokeFunction, KMS crypto
+  operations, and SQS message operations are ALL data-plane, so a role
+  actively calling them nonstop still shows zero usage in this check's
+  source data — the exact opposite of "unused." Fixed the same way the
+  wildcard-action gap above is already handled: _KNOWN_DATA_PLANE_ACTIONS
+  excludes them from _explicit_granted_actions' candidate set entirely,
+  rather than confidently (and wrongly) calling them unused. That list is a
+  small, explicitly non-exhaustive set of the well-documented, high-
+  confidence AWS CloudTrail data-event categories — same honesty pattern as
+  _IAM_TO_CLOUDTRAIL_EVENTNAME_EXCEPTIONS below, not a full per-service
+  audit. A data-plane action for a service not yet in this list can still
+  be incorrectly flagged until confirmed through real use and added.
 """
 
 import json
@@ -88,6 +104,27 @@ _IAM_TO_CLOUDTRAIL_EVENTNAME_EXCEPTIONS = {
     "s3:listallmybuckets": "s3:listbuckets",
 }
 
+_KNOWN_DATA_PLANE_ACTIONS = {
+    # Actions CloudTrail's LookupEvents can NEVER see, regardless of how
+    # actively they're called — see module docstring (Hall of Bugs, found
+    # by fusiontechstrategies). A small, explicitly non-exhaustive set of
+    # the well-documented AWS CloudTrail data-event categories, not a full
+    # per-service audit. Add entries here as more are confirmed, don't
+    # assume this list is complete.
+    "s3:getobject", "s3:putobject", "s3:deleteobject",
+    "s3:getobjectacl", "s3:putobjectacl",
+    "s3:getobjecttagging", "s3:putobjecttagging", "s3:deleteobjecttagging",
+    "s3:getobjectversion", "s3:deleteobjectversion", "s3:restoreobject",
+    "dynamodb:getitem", "dynamodb:putitem", "dynamodb:updateitem", "dynamodb:deleteitem",
+    "dynamodb:query", "dynamodb:scan",
+    "dynamodb:batchgetitem", "dynamodb:batchwriteitem",
+    "dynamodb:transactgetitems", "dynamodb:transactwriteitems",
+    "lambda:invokefunction",
+    "kms:decrypt", "kms:encrypt", "kms:generatedatakey",
+    "kms:generatedatakeywithoutplaintext", "kms:reencrypt",
+    "sqs:sendmessage", "sqs:receivemessage", "sqs:deletemessage",
+}
+
 
 def _is_action_used(granted_action: str, used_actions: set) -> bool:
     """True if granted_action was actually used — checked directly, or
@@ -103,7 +140,11 @@ def _explicit_granted_actions(principal: Principal) -> set:
     Allow statements grant. Excludes '*', any 'service:*' wildcard, Deny
     statements, and NotAction statements (same reasoning as wildcards —
     NotAction implies an unbounded 'everything except X' set, not a
-    concrete list to check usage against)."""
+    concrete list to check usage against), AND any known data-plane
+    action (see _KNOWN_DATA_PLANE_ACTIONS / module docstring) — CloudTrail
+    LookupEvents structurally cannot observe those either way, so they're
+    excluded from the candidate set the same way wildcards are, not
+    confidently called 'unused'."""
     granted = set()
     for _, statements in principal.policies:
         for stmt in statements:
@@ -120,6 +161,8 @@ def _explicit_granted_actions(principal: Principal) -> set:
                     # wildcarded, just not to the whole service) were
                     # slipping through the old check (action.endswith(":*")),
                     # which only matches the exact literal ":*" suffix.
+                    continue
+                if action in _KNOWN_DATA_PLANE_ACTIONS:
                     continue
                 granted.add(action)
     return granted
@@ -200,6 +243,16 @@ def check_27_roles_not_assumed(iam_roles_raw: list, lookback_days: int = 90) -> 
     window, using IAM's own RoleLastUsed field directly — no CloudTrail
     needed, same pattern as IAM-09/10.
 
+    iam_roles_raw must come from per-role get_role calls, NOT list_roles
+    directly — confirmed unreliable (Hall of Bugs, found by
+    fusiontechstrategies): a role assumed minutes earlier, with RoleLastUsed
+    correctly populated via get_role, can still come back empty from
+    list_roles, making this check flag every role in the account as "never
+    assumed" regardless of actual activity. Same fix already applied to
+    PermissionsBoundary in principals.py — get_role per role is the
+    documented-reliable path, list_roles' own summary data isn't. See
+    run_all() below for where the per-role fetch happens.
+
     AWS-managed service-linked roles (path starts with
     /aws-service-role/) are deliberately excluded — confirmed as a real
     gap via a live scan that flagged AWSServiceRoleForRDS,
@@ -249,10 +302,16 @@ def run_all(session, principals: list) -> list:
     cloudtrail = session.client("cloudtrail")
     iam = session.client("iam")
 
-    roles_raw = []
+    role_names = []
     paginator = iam.get_paginator("list_roles")
     for page in paginator.paginate():
-        roles_raw.extend(page["Roles"])
+        role_names.extend(r["RoleName"] for r in page["Roles"])
+
+    # list_roles' own RoleLastUsed is unreliable — see check_27's docstring.
+    # get_role per role, one extra call each, is the documented-reliable
+    # path; the same tradeoff principals.py already makes for
+    # PermissionsBoundary.
+    roles_raw = [iam.get_role(RoleName=name)["Role"] for name in role_names]
 
     findings = []
     findings += check_26_unused_permissions(cloudtrail, principals)

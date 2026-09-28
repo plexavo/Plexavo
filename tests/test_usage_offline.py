@@ -60,17 +60,21 @@ def role_dict(name, last_used=None):
 
 
 print("=== _explicit_granted_actions: extracts explicit actions, excludes wildcards ===")
+# Deliberately uses management-plane actions (ec2:*, iam:ListRoles) here,
+# not s3:GetObject/PutObject — those are now excluded as known data-plane
+# actions (see the dedicated regression below), which would make this
+# fixture test the wrong thing.
 p = Principal(type="role", name="test-role", arn="arn:aws:iam::111111111111:role/test-role", policies=[
     ("inline-policy", [
-        {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"], "Resource": "*"},
+        {"Effect": "Allow", "Action": ["ec2:RunInstances", "iam:ListRoles"], "Resource": "*"},
         {"Effect": "Allow", "Action": "iam:*", "Resource": "*"},  # service wildcard, excluded
         {"Effect": "Allow", "Action": "*", "Resource": "*"},      # full wildcard, excluded
-        {"Effect": "Deny", "Action": "s3:DeleteObject", "Resource": "*"},  # Deny, excluded
-        {"Effect": "Allow", "NotAction": "s3:GetObject", "Resource": "*"},  # NotAction, excluded
+        {"Effect": "Deny", "Action": "ec2:TerminateInstances", "Resource": "*"},  # Deny, excluded
+        {"Effect": "Allow", "NotAction": "ec2:RunInstances", "Resource": "*"},  # NotAction, excluded
     ]),
 ])
 result = usage._explicit_granted_actions(p)
-assert_true(result == {"s3:getobject", "s3:putobject"}, f"Only explicit Allow actions kept (got: {result})")
+assert_true(result == {"ec2:runinstances", "iam:listroles"}, f"Only explicit Allow actions kept (got: {result})")
 
 print("\n=== _explicit_granted_actions: role with only wildcard grants has zero explicit actions ===")
 p2 = Principal(type="role", name="admin-role", arn="arn:aws:iam::111111111111:role/admin-role", policies=[
@@ -172,6 +176,111 @@ p3 = Principal(type="role", name="scanner-role", arn="arn:aws:iam::111111111111:
 ])
 result = usage._explicit_granted_actions(p3)
 assert_true(result == {"lambda:listfunctions"}, f"Prefix wildcards excluded, only the genuinely explicit action kept (got: {result})")
+
+print("\n=== REGRESSION: reported bug (Hall of Bugs, found by fusiontechstrategies) — "
+      "data-plane actions (s3:GetObject/PutObject) must never be flagged as unused ===")
+p4 = Principal(type="role", name="app-role", arn="arn:aws:iam::111111111111:role/app-role", policies=[
+    ("policy", [{"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"], "Resource": "arn:aws:s3:::demo/*"}]),
+])
+result = usage._explicit_granted_actions(p4)
+assert_true(result == set(), f"s3:GetObject/PutObject are excluded from the candidate set entirely (got: {result})")
+
+# End-to-end: a role actively calling GetObject/PutObject nonstop, with NO
+# CloudTrail LookupEvents activity at all (the real-world state, since
+# LookupEvents can never see data events regardless of actual usage) — must
+# produce ZERO USE-26 findings, not "confirmed unused, remove it."
+role_arn3 = "arn:aws:iam::111111111111:role/app-role"
+principals_dataplane = [Principal(type="role", name="app-role", arn=role_arn3, policies=[
+    ("policy", [{"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject"], "Resource": "arn:aws:s3:::demo/*"}]),
+])]
+findings = usage.check_26_unused_permissions(FakeCloudTrail([]), principals_dataplane)
+assert_true(len(findings) == 0,
+            f"An actively-used data-plane-only role produces zero USE-26 findings (got: {[f.raw_detail for f in findings]})")
+
+print("\n=== REGRESSION: a role with BOTH a data-plane action and a genuinely unused management action — "
+      "only the management action is flagged, the data-plane one is silently excluded, not fabricated as used ===")
+principals_mixed = [Principal(type="role", name="mixed-role", arn="arn:aws:iam::111111111111:role/mixed-role", policies=[
+    ("policy", [{"Effect": "Allow", "Action": ["s3:GetObject", "iam:ListRoles"], "Resource": "*"}]),
+])]
+findings = usage.check_26_unused_permissions(FakeCloudTrail([]), principals_mixed)
+assert_true(len(findings) == 1, "Fires once, for the genuinely-unused management action only")
+assert_true("iam:listroles" in findings[0].raw_detail.lower(), "Names iam:ListRoles as unused")
+assert_true("s3:getobject" not in findings[0].raw_detail.lower(), "Does NOT name s3:GetObject — it was never a checkable candidate")
+
+print("\n=== FALSE POSITIVE GUARD: other known data-plane actions (DynamoDB, Lambda, KMS, SQS) are excluded too ===")
+p5 = Principal(type="role", name="multi-service-role", arn="arn:aws:iam::111111111111:role/multi-service-role", policies=[
+    ("policy", [{"Effect": "Allow", "Action": [
+        "dynamodb:GetItem", "dynamodb:PutItem", "lambda:InvokeFunction",
+        "kms:Decrypt", "sqs:SendMessage",
+    ], "Resource": "*"}]),
+])
+result = usage._explicit_granted_actions(p5)
+assert_true(result == set(), f"All known data-plane actions across services are excluded (got: {result})")
+
+print("\n=== REGRESSION: management-plane actions are still correctly checkable and still fire when genuinely unused ===")
+# Confirms the fix didn't over-broaden into suppressing real findings —
+# management actions (which LookupEvents genuinely CAN observe) must stay
+# fully checked, exactly as before.
+principals_mgmt = [Principal(type="role", name="mgmt-role", arn="arn:aws:iam::111111111111:role/mgmt-role", policies=[
+    ("policy", [{"Effect": "Allow", "Action": ["ec2:RunInstances", "ec2:TerminateInstances"], "Resource": "*"}]),
+])]
+ct_mgmt = FakeCloudTrail([assumed_role_event("arn:aws:iam::111111111111:role/mgmt-role", "ec2.amazonaws.com", "RunInstances")])
+findings = usage.check_26_unused_permissions(ct_mgmt, principals_mgmt)
+assert_true(len(findings) == 1 and "ec2:terminateinstances" in findings[0].raw_detail.lower(),
+            "A genuinely-unused MANAGEMENT action still fires (the fix didn't disable the check generally)")
+
+print("\n=== REGRESSION: reported bug (Hall of Bugs, found by fusiontechstrategies) — "
+      "run_all() must use get_role, not list_roles' own RoleLastUsed, for USE-27 ===")
+
+
+class FakeIAM:
+    """Simulates the real, reported AWS behavior: list_roles' own Roles[]
+    entries omit RoleLastUsed even for a role assumed minutes ago, while
+    get_role for that exact role returns it correctly."""
+
+    def __init__(self, roles_by_name):
+        self._roles_by_name = roles_by_name
+
+    def get_paginator(self, name):
+        assert name == "list_roles"
+        summary = [{"RoleName": n, "Arn": r["Arn"], "Path": r.get("Path", "/")}
+                   for n, r in self._roles_by_name.items()]
+        return FakePaginator([{"Roles": summary}])
+
+    def get_role(self, RoleName):
+        return {"Role": self._roles_by_name[RoleName]}
+
+
+class FakeSessionForRunAll:
+    def __init__(self, cloudtrail, iam):
+        self._cloudtrail = cloudtrail
+        self._iam = iam
+
+    def client(self, name):
+        return {"cloudtrail": self._cloudtrail, "iam": self._iam}[name]
+
+
+recent = datetime.now(timezone.utc) - timedelta(days=5)
+fake_iam = FakeIAM({
+    "recently-used-role": {
+        "RoleName": "recently-used-role",
+        "Arn": "arn:aws:iam::111111111111:role/recently-used-role",
+        "Path": "/",
+        "RoleLastUsed": {"LastUsedDate": recent},  # only visible via get_role, per the bug
+    },
+    "genuinely-unused-role": {
+        "RoleName": "genuinely-unused-role",
+        "Arn": "arn:aws:iam::111111111111:role/genuinely-unused-role",
+        "Path": "/",
+        "RoleLastUsed": {},
+    },
+})
+findings = usage.run_all(FakeSessionForRunAll(FakeCloudTrail([]), fake_iam), [])
+use27 = [f for f in findings if f.check_id == "USE-27"]
+assert_true(not any(f.resource_arn.endswith("recently-used-role") for f in use27),
+            f"A role recently assumed (per get_role) does NOT fire USE-27, even though list_roles omits RoleLastUsed (got: {[f.resource_arn for f in use27]})")
+assert_true(any(f.resource_arn.endswith("genuinely-unused-role") for f in use27),
+            "A genuinely-never-assumed role still correctly fires USE-27")
 
 print(f"\n{'ALL PASSED' if failures == 0 else f'{failures} FAILURE(S)'}")
 sys.exit(1 if failures else 0)

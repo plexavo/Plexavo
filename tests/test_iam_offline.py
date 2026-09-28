@@ -188,6 +188,29 @@ own_findings = [f for f in findings9 if f.resource_arn == capped_admin_target.ar
 assert_true(len(own_findings) == 0,
             f"capped-admin-target (AdministratorAccess + narrow boundary) produces ZERO findings on itself — got {[f.check_id for f in own_findings]}")
 
+print("\n=== REGRESSION: reported bug (Hall of Bugs, found by fusiontechstrategies) — "
+      "sts:AssumeRole on 'role/*' must fire IAM-06, not silently miss both IAM-05 and IAM-06 ===")
+wildcard_role_target = role("wildcard-role-target-admin", [allow(Action="*", Resource="*")])
+wildcard_role_attacker = role("wildcard-role-attacker", [
+    allow(Action="sts:AssumeRole", Resource=f"arn:aws:iam::111111111111:role/*"),
+])
+findings10 = run(baseline_principals + [wildcard_role_target, wildcard_role_attacker])
+assert_true(any(f.check_id == "IAM-06" and f.resource_arn == wildcard_role_attacker.arn for f in findings10),
+            "IAM-06 fires on an sts:AssumeRole grant scoped to 'role/*' (previously: neither IAM-05 nor IAM-06 fired)")
+assert_true(not any(f.check_id == "IAM-05" and f.resource_arn == wildcard_role_attacker.arn for f in findings10),
+            "IAM-05 does NOT also fire for the same 'role/*' grant — it's IAM-06's case exclusively, no double-report")
+
+print("\n=== REGRESSION: a narrower named-prefix wildcard ('role/Admin*') is IAM-05's job, not IAM-06's ===")
+named_prefix_target = role("named-prefix-admin-target", [allow(Action="*", Resource="*")])
+named_prefix_attacker = role("named-prefix-attacker", [
+    allow(Action="sts:AssumeRole", Resource="arn:aws:iam::111111111111:role/named-prefix-admin*"),
+])
+findings11 = run(baseline_principals + [named_prefix_target, named_prefix_attacker])
+assert_true(any(f.check_id == "IAM-05" and f.resource_arn == named_prefix_attacker.arn for f in findings11),
+            "IAM-05 fires on a specific named-prefix wildcard that happens to cover a real admin role")
+assert_true(not any(f.check_id == "IAM-06" and f.resource_arn == named_prefix_attacker.arn for f in findings11),
+            "IAM-06 does NOT fire — 'role/Admin*' is not 'assume ANY role', only a narrow named subset")
+
 print("\n=== New: is_admin_equivalent() heuristic path — iam:* + 2 broad service wildcards, no literal '*' ===")
 heuristic_admin_target = role("heuristic-admin-target", [allow(
     Action=["iam:*", "ec2:*", "s3:*"], Resource="*",

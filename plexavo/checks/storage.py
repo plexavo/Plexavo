@@ -15,7 +15,7 @@ import json
 from botocore.exceptions import ClientError
 
 from plexavo.findings import Finding, Severity
-from plexavo.principals import _normalize
+from plexavo.principals import _normalize, _condition_adjustment
 
 PUBLIC_GROUP_URIS = {
     "http://acs.amazonaws.com/groups/global/AllUsers": "AllUsers (anyone on the internet, no AWS account needed)",
@@ -29,7 +29,7 @@ def list_buckets(s3) -> list:
     return [b["Name"] for b in s3.list_buckets()["Buckets"]]
 
 
-def check_19_missing_public_access_block(s3, bucket_names: list) -> list[Finding]:
+def check_19_missing_public_access_block(s3, bucket_names: list, skipped: set | None = None) -> list[Finding]:
     """STOR-19: bucket-level PublicAccessBlock missing entirely, or present
     but with any of the 4 settings disabled.
 
@@ -39,7 +39,14 @@ def check_19_missing_public_access_block(s3, bucket_names: list) -> list[Finding
     distinct exception shape (unlike, say, IAM's NoSuchEntityException),
     so the dynamic-exception-class pattern silently never matches and the
     code never raises AttributeError only because it's also never
-    triggered — a latent bug, not a working code path, until this fix."""
+    triggered — a latent bug, not a working code path, until this fix.
+
+    A bucket the caller's own principal can't read (AccessDenied, e.g. an
+    explicit Deny in that bucket's own policy) is skipped for this check
+    rather than raised — one unreadable bucket used to crash the entire
+    scan (Hall of Bugs, found by fusiontechstrategies). Its name is added
+    to `skipped` so the caller can report it as unevaluated instead of
+    silently dropping it from coverage."""
     findings = []
     for name in bucket_names:
         try:
@@ -50,7 +57,12 @@ def check_19_missing_public_access_block(s3, bucket_names: list) -> list[Finding
             detail = (f"has PublicAccessBlock configured, but "
                       f"{', '.join(off)} {'is' if len(off) == 1 else 'are'} disabled")
         except ClientError as e:
-            if e.response["Error"]["Code"] != "NoSuchPublicAccessBlockConfiguration":
+            code = e.response["Error"]["Code"]
+            if code == "AccessDenied":
+                if skipped is not None:
+                    skipped.add(name)
+                continue
+            if code != "NoSuchPublicAccessBlockConfiguration":
                 raise
             detail = "has NO PublicAccessBlock configuration at all — none of the four protections are in place"
         findings.append(Finding(
@@ -65,16 +77,31 @@ def check_19_missing_public_access_block(s3, bucket_names: list) -> list[Finding
     return findings
 
 
-def check_20_public_bucket_policy(s3, bucket_names: list) -> list[Finding]:
+def check_20_public_bucket_policy(s3, bucket_names: list, skipped: set | None = None) -> list[Finding]:
     """STOR-20: bucket policy grants Allow to Principal:* (or {"AWS":"*"}).
     Same ClientError pattern as check_19, same real reason — confirmed
-    NoSuchBucketPolicy isn't modeled as a distinct S3 exception either."""
+    NoSuchBucketPolicy isn't modeled as a distinct S3 exception either.
+    AccessDenied is skipped, not raised — see check_19's docstring.
+
+    A Condition block on the statement (e.g. aws:PrincipalOrgID, aws:SourceVpc)
+    downgrades Critical/Confirmed to High/"Likely — see note" via the shared
+    _condition_adjustment (moved from checks/iam.py, same mechanism every IAM
+    check already used) instead of asserting unconditional public access —
+    Hall of Bugs, found by fusiontechstrategies: a Principal:* bucket policy
+    scoped to an org/VPC via Condition is a common, legitimate pattern
+    (CloudFront OAC, org-wide internal buckets), and this previously fired
+    at full Critical/Confirmed regardless."""
     findings = []
     for name in bucket_names:
         try:
             policy_str = s3.get_bucket_policy(Bucket=name)["Policy"]
         except ClientError as e:
-            if e.response["Error"]["Code"] != "NoSuchBucketPolicy":
+            code = e.response["Error"]["Code"]
+            if code == "AccessDenied":
+                if skipped is not None:
+                    skipped.add(name)
+                continue
+            if code != "NoSuchBucketPolicy":
                 raise
             continue
         policy = json.loads(policy_str)
@@ -88,25 +115,42 @@ def check_20_public_bucket_policy(s3, bucket_names: list) -> list[Finding]:
             if not is_public:
                 continue
             actions = _normalize(stmt.get("Action"))
+            severity, confidence, evidence = _condition_adjustment(stmt)
+            if stmt.get("Condition"):
+                access_phrase = ("to Principal:* — but scoped by a Condition block, so whether "
+                                  "this is actually publicly reachable depends on that condition; "
+                                  "see evidence")
+            else:
+                access_phrase = ("to Principal:* — anyone on the internet, no AWS account "
+                                  "required, can perform these actions")
             findings.append(Finding(
                 check_id="STOR-20",
                 title="S3 Bucket Policy Allows Public Access",
-                severity=Severity.CRITICAL,
+                severity=severity,
                 resource_arn=f"arn:aws:s3:::{name}",
                 raw_detail=f"Bucket '{name}' has a bucket policy statement granting "
-                           f"{', '.join(actions)} to Principal:* — anyone on the internet, "
-                           f"no AWS account required, can perform these actions.",
+                           f"{', '.join(actions)} {access_phrase}.",
                 account_context=f"bucket={name}",
+                confidence=confidence,
+                evidence=evidence,
             ))
     return findings
 
 
-def check_21_public_acl(s3, bucket_names: list) -> list[Finding]:
+def check_21_public_acl(s3, bucket_names: list, skipped: set | None = None) -> list[Finding]:
     """STOR-21: bucket ACL grants any permission to the AllUsers or
-    AuthenticatedUsers built-in groups."""
+    AuthenticatedUsers built-in groups. AccessDenied is skipped, not
+    raised — see check_19's docstring."""
     findings = []
     for name in bucket_names:
-        acl = s3.get_bucket_acl(Bucket=name)
+        try:
+            acl = s3.get_bucket_acl(Bucket=name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "AccessDenied":
+                raise
+            if skipped is not None:
+                skipped.add(name)
+            continue
         for grant in acl.get("Grants", []):
             grantee = grant.get("Grantee", {})
             if grantee.get("Type") != "Group":
@@ -128,7 +172,7 @@ def check_21_public_acl(s3, bucket_names: list) -> list[Finding]:
     return findings
 
 
-def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
+def check_22_access_logging_disabled(s3, bucket_names: list, skipped: set | None = None) -> list[Finding]:
     """STOR-22: bucket has no server access logging configured.
 
     GetBucketLogging always returns 200, even when logging was never set
@@ -142,10 +186,19 @@ def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
     it on. Whether object-level access is actually unreviewable after the
     fact depends on whether it's captured another way (e.g. CloudTrail S3
     data events), which Plexavo does not check — so the finding language
-    stays careful not to claim investigation is impossible."""
+    stays careful not to claim investigation is impossible.
+
+    AccessDenied is skipped, not raised — see check_19's docstring."""
     findings = []
     for name in bucket_names:
-        config = s3.get_bucket_logging(Bucket=name)
+        try:
+            config = s3.get_bucket_logging(Bucket=name)
+        except ClientError as e:
+            if e.response["Error"]["Code"] != "AccessDenied":
+                raise
+            if skipped is not None:
+                skipped.add(name)
+            continue
         if "LoggingEnabled" in config:
             continue
         findings.append(Finding(
@@ -165,14 +218,21 @@ def check_22_access_logging_disabled(s3, bucket_names: list) -> list[Finding]:
     return findings
 
 
-def run_all(session) -> list[Finding]:
+def run_all(session) -> tuple[list[Finding], list[str]]:
     """Run STOR-19 through STOR-22 against every bucket in the account —
-    not just testbed buckets. A real scan must check everything."""
+    not just testbed buckets. A real scan must check everything.
+
+    Returns (findings, skipped_buckets): a bucket the caller's principal
+    can't read (AccessDenied on any of the 4 per-bucket calls) is skipped
+    rather than crashing the whole scan, and its name comes back in
+    skipped_buckets so the caller can report it as unevaluated instead of
+    silently under-reporting. See check_19's docstring for why."""
     s3 = session.client("s3")
     bucket_names = list_buckets(s3)
+    skipped: set = set()
     findings = []
-    findings += check_19_missing_public_access_block(s3, bucket_names)
-    findings += check_20_public_bucket_policy(s3, bucket_names)
-    findings += check_21_public_acl(s3, bucket_names)
-    findings += check_22_access_logging_disabled(s3, bucket_names)
-    return findings
+    findings += check_19_missing_public_access_block(s3, bucket_names, skipped)
+    findings += check_20_public_bucket_policy(s3, bucket_names, skipped)
+    findings += check_21_public_acl(s3, bucket_names, skipped)
+    findings += check_22_access_logging_disabled(s3, bucket_names, skipped)
+    return findings, sorted(skipped)
