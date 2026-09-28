@@ -51,11 +51,12 @@ def assumed_role_event(role_arn, event_source, event_name):
     }
 
 
-def role_dict(name, last_used=None):
+def role_dict(name, last_used=None, create_date=None):
     return {
         "RoleName": name,
         "Arn": f"arn:aws:iam::111111111111:role/{name}",
         "RoleLastUsed": {"LastUsedDate": last_used} if last_used is not None else {},
+        "CreateDate": create_date,
     }
 
 
@@ -128,10 +129,12 @@ user_principal = [Principal(type="user", name="lab-admin", arn="arn:aws:iam::111
 findings = usage.check_26_unused_permissions(FakeCloudTrail([]), user_principal)
 assert_true(len(findings) == 0, "IAM users are not evaluated by this check — it's role-specific by design")
 
-print("\n=== check_27: fires on a role never assumed (RoleLastUsed empty) ===")
+print("\n=== check_27: fires on a role never assumed (RoleLastUsed empty), no CreateDate at all ===")
 roles = [role_dict("never-used-role")]
 findings = usage.check_27_roles_not_assumed(roles)
 assert_true(len(findings) == 1 and "never been assumed" in findings[0].raw_detail, "Fires with 'never assumed' wording")
+assert_true(findings[0].severity.value == "High" and findings[0].confidence == "Confirmed",
+            "No CreateDate at all falls through to the unchanged Confirmed/High behavior (defensive default)")
 
 print("\n=== check_27: fires on a role last assumed 120 days ago (over the 90-day window) ===")
 old_date = datetime.now(timezone.utc) - timedelta(days=120)
@@ -144,6 +147,35 @@ recent_date = datetime.now(timezone.utc) - timedelta(days=5)
 roles = [role_dict("active-role", last_used=recent_date)]
 findings = usage.check_27_roles_not_assumed(roles)
 assert_true(len(findings) == 0, "Does NOT fire on a recently-assumed role")
+
+print("\n=== FIX: a freshly-created role with empty RoleLastUsed downgrades instead of asserting Confirmed ===")
+# Confirmed live (2026-09-28): a role assumed via a real sts:AssumeRole call
+# still showed RoleLastUsed={} more than 20 minutes later — AWS's own
+# propagation can genuinely take hours, not just in this compressed test.
+just_created = datetime.now(timezone.utc) - timedelta(hours=1)
+roles = [role_dict("brand-new-role", create_date=just_created)]
+findings = usage.check_27_roles_not_assumed(roles)
+assert_true(len(findings) == 1, "Still fires — a Condition/grace period downgrades, never fully suppresses")
+assert_true(findings[0].severity.value == "Medium", f"Downgraded to Medium, not High (got: {findings[0].severity.value})")
+assert_true(findings[0].confidence == "Likely — see note", f"Confidence downgraded (got: {findings[0].confidence})")
+assert_true("propagate" in findings[0].evidence.lower(), "Evidence explains the AWS propagation ambiguity, not buried in raw_detail")
+
+print("\n=== REGRESSION: a role created well past the grace window stays at full Confirmed/High ===")
+long_ago = datetime.now(timezone.utc) - timedelta(hours=48)
+roles = [role_dict("old-unused-role", create_date=long_ago)]
+findings = usage.check_27_roles_not_assumed(roles)
+assert_true(len(findings) == 1, "Fires")
+assert_true(findings[0].severity.value == "High" and findings[0].confidence == "Confirmed",
+            "Past the grace window, stays at full Confirmed/High — the fix doesn't quietly weaken the check generally")
+
+print("\n=== REGRESSION: the grace period only applies to the empty-RoleLastUsed case, never a stale-but-real timestamp ===")
+stale_but_recent_role = datetime.now(timezone.utc) - timedelta(hours=1)
+old_last_used = datetime.now(timezone.utc) - timedelta(days=120)
+roles = [role_dict("stale-fresh-role", last_used=old_last_used, create_date=stale_but_recent_role)]
+findings = usage.check_27_roles_not_assumed(roles)
+assert_true(len(findings) == 1, "Fires")
+assert_true(findings[0].severity.value == "High" and findings[0].confidence == "Confirmed",
+            "A real (non-empty) stale LastUsedDate is unambiguous regardless of CreateDate — full Confirmed/High, no grace-period downgrade")
 
 print("\n=== check_27: exactly-90-days boundary — must fire (>=90, not >90) ===")
 boundary_date = datetime.now(timezone.utc) - timedelta(days=91)  # safely past 90 to avoid test-runtime flakiness

@@ -125,6 +125,13 @@ _KNOWN_DATA_PLANE_ACTIONS = {
     "sqs:sendmessage", "sqs:receivemessage", "sqs:deletemessage",
 }
 
+# How long after a role's CreateDate an empty RoleLastUsed is treated as
+# "AWS may not have propagated this yet" rather than "confirmed never
+# used" - see check_27_roles_not_assumed's docstring. 24h is a deliberate
+# multiple of the delay actually observed live (RoleLastUsed still empty
+# 20+ minutes after a genuine sts:AssumeRole call), not a guess.
+ROLE_LAST_USED_GRACE_HOURS = 24
+
 
 def _is_action_used(granted_action: str, used_actions: set) -> bool:
     """True if granted_action was actually used — checked directly, or
@@ -263,16 +270,52 @@ def check_27_roles_not_assumed(iam_roles_raw: list, lookback_days: int = 90) -> 
     against real data before this. More importantly: recommending
     `iam:DeleteServiceLinkedRole` is genuinely risky if AWS is silently,
     legitimately depending on one — this check has no way to confirm
-    that either way, so it doesn't guess."""
+    that either way, so it doesn't guess.
+
+    A recently-created role with an empty RoleLastUsed is genuinely
+    ambiguous, not confidently "never assumed" — confirmed live while
+    testing the get_role fix above: a role assumed via a real
+    sts:AssumeRole call still showed RoleLastUsed={} more than 20 minutes
+    later, and AWS's own documentation states this data can take up to
+    several hours to propagate after actual use. This isn't specific to
+    a compressed test timeline either — the exact same thing happens to
+    any real role created and used for the first time shortly before a
+    scan (a CI/CD pipeline spinning up a role and immediately assuming
+    it, for example). ROLE_LAST_USED_GRACE_HOURS below downgrades that
+    specific, narrow case (empty RoleLastUsed AND created within the
+    grace window) to "Likely — see note" at reduced severity, rather
+    than asserting Confirmed either way — never silently suppressed
+    (a role that's genuinely never been used still gets a full-confidence
+    finding once the grace window passes), never falsely certain while
+    AWS's own data could still be catching up. Deliberately scoped
+    per-role, not account-wide: an account where truly nothing has been
+    used yet is a real, common, accurately-reported case (see module
+    docstring's low-activity-account note) — silencing this check
+    whenever no role anywhere shows RoleLastUsed would hide exactly that
+    signal instead of fixing an ambiguity."""
     findings = []
     cutoff = datetime.now(timezone.utc) - timedelta(days=lookback_days)
+    grace_cutoff = datetime.now(timezone.utc) - timedelta(hours=ROLE_LAST_USED_GRACE_HOURS)
     for role in iam_roles_raw:
         if role.get("Path", "").startswith("/aws-service-role/"):
             continue
         last_used = role.get("RoleLastUsed", {}).get("LastUsedDate")
         role_name = role["RoleName"]
         role_arn = role["Arn"]
+        severity = Severity.HIGH
+        confidence = "Confirmed"
+        ambiguity_note = ""
         if last_used is None:
+            create_date = role.get("CreateDate")
+            if create_date is not None and create_date > grace_cutoff:
+                severity = Severity.MEDIUM
+                confidence = "Likely — see note"
+                ambiguity_note = (
+                    f" Role was created less than {ROLE_LAST_USED_GRACE_HOURS}h ago — "
+                    f"AWS's RoleLastUsed data can take hours to propagate after actual use, "
+                    f"so an empty value here doesn't necessarily mean the role has never been "
+                    f"used, only that no use has been recorded yet."
+                )
             detail = f"Role '{role_name}' has never been assumed since it was created."
             last_used_str = "never"
         elif last_used < cutoff:
@@ -284,14 +327,15 @@ def check_27_roles_not_assumed(iam_roles_raw: list, lookback_days: int = 90) -> 
         findings.append(Finding(
             check_id="USE-27",
             title="Role Not Assumed Recently",
-            severity=Severity.HIGH,
+            severity=severity,
             resource_arn=role_arn,
             raw_detail=(
                 f"{detail} An unused role is standing attack surface with no current legitimate "
                 f"purpose — confirm it's still needed, or remove it."
             ),
             account_context=f"last_used={last_used_str}",
-            evidence=f"last_used={last_used_str}",
+            confidence=confidence,
+            evidence=f"last_used={last_used_str}.{ambiguity_note}".strip(),
         ))
     return findings
 
