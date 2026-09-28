@@ -10,6 +10,8 @@ due to an account-level setting this check doesn't see. Stated limitation,
 not an oversight — same "don't overclaim" pattern as every other check.
 """
 
+from __future__ import annotations
+
 import json
 
 from botocore.exceptions import ClientError
