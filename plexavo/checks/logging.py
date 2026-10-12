@@ -1,4 +1,10 @@
-"""Category 4: Logging and Detection — checks 22-25, all High.
+"""Category 4: Logging and Detection — checks 22-26.
+
+LOG-22 through LOG-25 are High. LOG-26 is Medium: with log-file
+validation off the logs themselves still exist and are still delivered,
+so what is missing is the ability to prove they were not altered — an
+integrity-assurance gap rather than a visibility one, the same reasoning
+that keeps STOR-22 below the storage exposure checks.
 
 Real-account note: this project's own AWS account already has a real
 CloudTrail trail (revealed by the aws-cloudtrail-logs-... bucket that
@@ -95,15 +101,12 @@ def check_24_cloudtrail_logs_not_encrypted(trails: list) -> list[Finding]:
     return findings
 
 
-
-def check_tbd_cloudtrail_log_validation_disabled(trails: list) -> list[Finding]:
-    """LOG-TBD: each actively-logging trail without log-file validation.
-
-    The check ID and severity await maintainer assignment. MEDIUM is only
-    a provisional executable enum value, not a final severity decision.
-    LogFileValidationEnabled comes directly from DescribeTrails; stopped
-    trails are skipped, matching LOG-24.
-    """
+def check_26_cloudtrail_log_validation_disabled(trails: list) -> list[Finding]:
+    """LOG-26: per-trail, like LOG-24 — each actively-logging trail with
+    log-file integrity validation disabled is its own finding.
+    LogFileValidationEnabled comes directly from DescribeTrails, so this
+    needs no extra API call. Stopped trails are skipped, matching LOG-24;
+    checks 22/23 already cover that gap."""
     findings = []
     for t in trails:
         if not t["IsLogging"]:
@@ -111,19 +114,19 @@ def check_tbd_cloudtrail_log_validation_disabled(trails: list) -> list[Finding]:
         if t.get("LogFileValidationEnabled"):
             continue
         findings.append(Finding(
-            check_id="LOG-TBD",  # Placeholder: maintainer will assign the ID.
+            check_id="LOG-26",
             title="CloudTrail Log File Validation Disabled",
-            severity=Severity.MEDIUM,  # Provisional: maintainer will assign severity.
+            severity=Severity.MEDIUM,
             resource_arn=t["TrailARN"],
             raw_detail=f"Trail '{t['Name']}' is actively logging with log-file "
-                       f"integrity validation disabled. CloudTrail does not deliver "
-                       f"signed digest files for these logs, so their integrity "
-                       f"cannot be verified using CloudTrail log-file validation. "
-                       f"Enable log-file validation to support detection of "
-                       f"subsequent log tampering.",
+                       "integrity validation disabled. CloudTrail does not deliver "
+                       "signed digest files for these logs, so their integrity "
+                       "cannot be verified using CloudTrail log-file validation. "
+                       "Enable log-file validation to support detection of "
+                       "subsequent log tampering.",
             account_context=f"trail={t['Name']}",
             evidence="IsLogging=True, LogFileValidationEnabled="
-                     f"{t.get('LogFileValidationEnabled')}",
+                     f"{bool(t.get('LogFileValidationEnabled'))}",
         ))
     return findings
 
@@ -164,7 +167,7 @@ def check_25_guardduty_not_enabled(guardduty) -> list[Finding]:
 
 
 def run_all(session) -> list[Finding]:
-    """Run LOG-22 through LOG-25 and the provisional LOG-TBD check."""
+    """Run LOG-22 through LOG-26."""
     cloudtrail = session.client("cloudtrail")
     guardduty = session.client("guardduty")
     trails = _trails_with_status(cloudtrail)
@@ -173,6 +176,6 @@ def run_all(session) -> list[Finding]:
     findings += check_22_cloudtrail_not_enabled(trails)
     findings += check_23_cloudtrail_not_all_regions(trails)
     findings += check_24_cloudtrail_logs_not_encrypted(trails)
-    findings += check_tbd_cloudtrail_log_validation_disabled(trails)
+    findings += check_26_cloudtrail_log_validation_disabled(trails)
     findings += check_25_guardduty_not_enabled(guardduty)
     return findings

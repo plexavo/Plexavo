@@ -1,4 +1,4 @@
-# Logging Test Matrix — LOG-22 through LOG-25 and LOG-TBD (provisional)
+# Logging Test Matrix — LOG-22 through LOG-26
 
 ## LOG-22 and LOG-23: now genuinely proven, not just offline-tested
 
@@ -44,10 +44,11 @@ cd terraform-testbed
 terraform destroy
 ```
 
-## LOG-TBD: CloudTrail log-file integrity validation (provisional)
+## LOG-26: CloudTrail log-file integrity validation
 
-The maintainer will assign the final check ID and severity; the implementation
-uses provisional `Severity.MEDIUM` only because findings require an existing enum.
+Severity is Medium, not High like LOG-22 through LOG-25: validation being off
+leaves the logs themselves intact and delivered, so the gap is that their
+integrity cannot be proven, not that the activity went unrecorded.
 
 Offline fake-response tests in `tests/test_logging_offline.py` confirm that an
 actively logging trail with `LogFileValidationEnabled=False` produces one finding
