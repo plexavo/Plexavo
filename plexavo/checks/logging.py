@@ -1,4 +1,10 @@
-"""Category 4: Logging and Detection — checks 22-25, all High.
+"""Category 4: Logging and Detection — checks 22-26.
+
+LOG-22 through LOG-25 are High. LOG-26 is Medium: with log-file
+validation off the logs themselves still exist and are still delivered,
+so what is missing is the ability to prove they were not altered — an
+integrity-assurance gap rather than a visibility one, the same reasoning
+that keeps STOR-22 below the storage exposure checks.
 
 Real-account note: this project's own AWS account already has a real
 CloudTrail trail (revealed by the aws-cloudtrail-logs-... bucket that
@@ -17,8 +23,8 @@ not guessed:
   storage.py/encryption.py.
 
 IsLogging is fetched once per trail in run_all() and shared across
-checks 22/23/24, rather than each check independently re-calling
-GetTrailStatus for the same trail three times.
+the CloudTrail checks, rather than each check independently re-calling
+GetTrailStatus for the same trail.
 """
 
 from botocore.exceptions import ClientError
@@ -95,6 +101,36 @@ def check_24_cloudtrail_logs_not_encrypted(trails: list) -> list[Finding]:
     return findings
 
 
+def check_26_cloudtrail_log_validation_disabled(trails: list) -> list[Finding]:
+    """LOG-26: per-trail, like LOG-24 — each actively-logging trail with
+    log-file integrity validation disabled is its own finding.
+    LogFileValidationEnabled comes directly from DescribeTrails, so this
+    needs no extra API call. Stopped trails are skipped, matching LOG-24;
+    checks 22/23 already cover that gap."""
+    findings = []
+    for t in trails:
+        if not t["IsLogging"]:
+            continue
+        if t.get("LogFileValidationEnabled"):
+            continue
+        findings.append(Finding(
+            check_id="LOG-26",
+            title="CloudTrail Log File Validation Disabled",
+            severity=Severity.MEDIUM,
+            resource_arn=t["TrailARN"],
+            raw_detail=f"Trail '{t['Name']}' is actively logging with log-file "
+                       "integrity validation disabled. CloudTrail does not deliver "
+                       "signed digest files for these logs, so their integrity "
+                       "cannot be verified using CloudTrail log-file validation. "
+                       "Enable log-file validation to support detection of "
+                       "subsequent log tampering.",
+            account_context=f"trail={t['Name']}",
+            evidence="IsLogging=True, LogFileValidationEnabled="
+                     f"{bool(t.get('LogFileValidationEnabled'))}",
+        ))
+    return findings
+
+
 def check_25_guardduty_not_enabled(guardduty) -> list[Finding]:
     """LOG-25: GuardDuty is free to enable and provides automated threat
     detection. Region-scoped, matching this project's single-region
@@ -131,7 +167,7 @@ def check_25_guardduty_not_enabled(guardduty) -> list[Finding]:
 
 
 def run_all(session) -> list[Finding]:
-    """Run LOG-22 through LOG-25."""
+    """Run LOG-22 through LOG-26."""
     cloudtrail = session.client("cloudtrail")
     guardduty = session.client("guardduty")
     trails = _trails_with_status(cloudtrail)
@@ -140,5 +176,6 @@ def run_all(session) -> list[Finding]:
     findings += check_22_cloudtrail_not_enabled(trails)
     findings += check_23_cloudtrail_not_all_regions(trails)
     findings += check_24_cloudtrail_logs_not_encrypted(trails)
+    findings += check_26_cloudtrail_log_validation_disabled(trails)
     findings += check_25_guardduty_not_enabled(guardduty)
     return findings

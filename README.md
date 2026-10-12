@@ -65,7 +65,7 @@ command to fix it.
 | **EC2 Hardening** | Instance metadata service (IMDS) not requiring IMDSv2 - the setting behind the 2019 Capital One breach |
 | **Storage** | Public S3 buckets via ACLs, bucket policies, or missing Block Public Access; buckets with no access logging |
 | **Encryption** | Unencrypted EBS volumes, RDS instances, S3 buckets |
-| **Logging** | CloudTrail coverage and encryption, GuardDuty status |
+| **Logging** | CloudTrail coverage, encryption, and log file validation; GuardDuty status |
 | **Usage** | Permissions granted but never used, roles nobody has assumed in 90+ days |
 
 See `docs/*-TEST-MATRIX.md` for how each check was verified.

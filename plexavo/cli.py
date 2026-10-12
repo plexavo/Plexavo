@@ -268,7 +268,7 @@ def _run_scan_impl(args, json_mode: bool) -> None:
                            f"ENC-31 (AccessDenied) — treat their default-encryption status as "
                            f"unknown, not confirmed safe: {', '.join(enc_skipped_buckets)}[/yellow]")
 
-        stage("Running checks LOG-22 through LOG-25")
+        stage("Running checks LOG-22 through LOG-26")
         findings += logging_checks.run_all(session)
 
         stage("Running checks USE-26, USE-27 (usage analysis)")

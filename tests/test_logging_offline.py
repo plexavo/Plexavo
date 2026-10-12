@@ -7,6 +7,7 @@ import sys
 from botocore.exceptions import ClientError
 
 from plexavo.checks import logging as logging_checks
+from plexavo.findings import Severity
 
 
 class FakeCloudTrail:
@@ -35,10 +36,11 @@ class FakeGuardDuty:
         return {"DetectorIds": self._detector_ids}
 
 
-def trail(name, arn, multi_region=False, kms_key=None):
+def trail(name, arn, multi_region=False, kms_key=None, log_file_validation=False):
     t = {"Name": name, "TrailARN": arn, "IsMultiRegionTrail": multi_region}
     if kms_key:
         t["KmsKeyId"] = kms_key
+    t["LogFileValidationEnabled"] = log_file_validation
     return t
 
 
@@ -60,6 +62,7 @@ def run_ct_checks(trails, logging_status):
     findings += logging_checks.check_22_cloudtrail_not_enabled(enriched)
     findings += logging_checks.check_23_cloudtrail_not_all_regions(enriched)
     findings += logging_checks.check_24_cloudtrail_logs_not_encrypted(enriched)
+    findings += logging_checks.check_26_cloudtrail_log_validation_disabled(enriched)
     return findings
 
 
@@ -108,6 +111,40 @@ print("\n=== LOG-24 FALSE POSITIVE GUARD: stopped trail with no KMS key does NOT
 t = trail("stopped-no-kms", "arn:aws:cloudtrail:us-east-1:111111111111:trail/stopped-no-kms")
 findings = run_ct_checks([t], {t["TrailARN"]: False})
 assert_true(not any(f.check_id == "LOG-24" for f in findings), "A stopped trail is skipped by LOG-24, not double-flagged")
+
+print("\n=== LOG-26: logging trail with validation disabled ===")
+t = trail("no-validation", "arn:aws:cloudtrail:us-east-1:111111111111:trail/no-validation",
+          multi_region=True, log_file_validation=False)
+findings = run_ct_checks([t], {t["TrailARN"]: True})
+validation_findings = [f for f in findings if f.check_id == "LOG-26"]
+assert_true(len(validation_findings) == 1,
+            "Validation disabled on an active trail produces exactly one LOG-26 finding")
+assert_true(len(validation_findings) == 1
+            and validation_findings[0].resource_arn == t["TrailARN"]
+            and "IsLogging=True" in validation_findings[0].evidence
+            and "LogFileValidationEnabled=False" in validation_findings[0].evidence,
+            "LOG-26 finding includes the trail ARN and concrete status evidence")
+assert_true(validation_findings[0].severity == Severity.MEDIUM,
+            "LOG-26 is Medium: the logs still exist, only their integrity is unprovable")
+
+print("\n=== LOG-26 FALSE POSITIVE GUARD: logging trail with validation enabled ===")
+t = trail("with-validation", "arn:aws:cloudtrail:us-east-1:111111111111:trail/with-validation",
+          multi_region=True, log_file_validation=True)
+findings = run_ct_checks([t], {t["TrailARN"]: True})
+assert_true(not any(f.check_id == "LOG-26" for f in findings),
+            "Validation enabled on an active trail produces no LOG-26 finding")
+
+print("\n=== LOG-26 FALSE POSITIVE GUARD: stopped trail with validation disabled ===")
+t = trail("stopped-no-validation", "arn:aws:cloudtrail:us-east-1:111111111111:trail/stopped-no-validation",
+          log_file_validation=False)
+findings = run_ct_checks([t], {t["TrailARN"]: False})
+assert_true(not any(f.check_id == "LOG-26" for f in findings),
+            "Validation disabled on a stopped trail produces no LOG-26 finding")
+
+print("\n=== LOG-26: registered in run_all, not just callable directly ===")
+assert_true("check_26_cloudtrail_log_validation_disabled"
+            in logging_checks.run_all.__code__.co_names,
+            "run_all actually calls LOG-26 (guards against it being defined but never wired in)")
 
 print("\n=== LOG-25: GuardDuty not enabled (empty detector list) ===")
 findings = logging_checks.check_25_guardduty_not_enabled(FakeGuardDuty(detector_ids=[]))
