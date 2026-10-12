@@ -1,4 +1,4 @@
-# Logging Test Matrix — LOG-22 through LOG-25
+# Logging Test Matrix — LOG-22 through LOG-25 and LOG-TBD (provisional)
 
 ## LOG-22 and LOG-23: now genuinely proven, not just offline-tested
 
@@ -43,3 +43,18 @@ Grade specifically: `log-clean-trail` should produce **zero** LOG-22/23/24 findi
 cd terraform-testbed
 terraform destroy
 ```
+
+## LOG-TBD: CloudTrail log-file integrity validation (provisional)
+
+The maintainer will assign the final check ID and severity; the implementation
+uses provisional `Severity.MEDIUM` only because findings require an existing enum.
+
+Offline fake-response tests in `tests/test_logging_offline.py` confirm that an
+actively logging trail with `LogFileValidationEnabled=False` produces one finding
+with its ARN and evidence. An actively logging trail with validation enabled and
+a stopped trail with validation disabled produce no findings from this check.
+The field comes from DescribeTrails; no additional AWS calls are needed.
+Organization trails are treated like other trails, matching LOG-24.
+
+These cases validate detection logic with fake responses only. This check has
+not been verified against a real AWS account.

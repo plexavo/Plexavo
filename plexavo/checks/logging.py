@@ -17,8 +17,8 @@ not guessed:
   storage.py/encryption.py.
 
 IsLogging is fetched once per trail in run_all() and shared across
-checks 22/23/24, rather than each check independently re-calling
-GetTrailStatus for the same trail three times.
+the CloudTrail checks, rather than each check independently re-calling
+GetTrailStatus for the same trail.
 """
 
 from botocore.exceptions import ClientError
@@ -95,6 +95,39 @@ def check_24_cloudtrail_logs_not_encrypted(trails: list) -> list[Finding]:
     return findings
 
 
+
+def check_tbd_cloudtrail_log_validation_disabled(trails: list) -> list[Finding]:
+    """LOG-TBD: each actively-logging trail without log-file validation.
+
+    The check ID and severity await maintainer assignment. MEDIUM is only
+    a provisional executable enum value, not a final severity decision.
+    LogFileValidationEnabled comes directly from DescribeTrails; stopped
+    trails are skipped, matching LOG-24.
+    """
+    findings = []
+    for t in trails:
+        if not t["IsLogging"]:
+            continue
+        if t.get("LogFileValidationEnabled"):
+            continue
+        findings.append(Finding(
+            check_id="LOG-TBD",  # Placeholder: maintainer will assign the ID.
+            title="CloudTrail Log File Validation Disabled",
+            severity=Severity.MEDIUM,  # Provisional: maintainer will assign severity.
+            resource_arn=t["TrailARN"],
+            raw_detail=f"Trail '{t['Name']}' is actively logging with log-file "
+                       f"integrity validation disabled. CloudTrail does not deliver "
+                       f"signed digest files for these logs, so their integrity "
+                       f"cannot be verified using CloudTrail log-file validation. "
+                       f"Enable log-file validation to support detection of "
+                       f"subsequent log tampering.",
+            account_context=f"trail={t['Name']}",
+            evidence="IsLogging=True, LogFileValidationEnabled="
+                     f"{t.get('LogFileValidationEnabled')}",
+        ))
+    return findings
+
+
 def check_25_guardduty_not_enabled(guardduty) -> list[Finding]:
     """LOG-25: GuardDuty is free to enable and provides automated threat
     detection. Region-scoped, matching this project's single-region
@@ -131,7 +164,7 @@ def check_25_guardduty_not_enabled(guardduty) -> list[Finding]:
 
 
 def run_all(session) -> list[Finding]:
-    """Run LOG-22 through LOG-25."""
+    """Run LOG-22 through LOG-25 and the provisional LOG-TBD check."""
     cloudtrail = session.client("cloudtrail")
     guardduty = session.client("guardduty")
     trails = _trails_with_status(cloudtrail)
@@ -140,5 +173,6 @@ def run_all(session) -> list[Finding]:
     findings += check_22_cloudtrail_not_enabled(trails)
     findings += check_23_cloudtrail_not_all_regions(trails)
     findings += check_24_cloudtrail_logs_not_encrypted(trails)
+    findings += check_tbd_cloudtrail_log_validation_disabled(trails)
     findings += check_25_guardduty_not_enabled(guardduty)
     return findings
