@@ -34,6 +34,13 @@ source .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
 ```
 
+Create your branch from `dev`, not `main`:
+
+```bash
+git fetch origin
+git checkout -b my-change origin/dev
+```
+
 > [!NOTE]
 > On Windows, use `python -m` for everything, as in the README. Smart App
 > Control can block the `.exe` launchers a venv generates.
@@ -112,6 +119,11 @@ fact there. If the check can't be fully certain (a `Condition` block, for
 example), lower `confidence` instead of hiding the doubt in prose. Search
 for `confidence=` in `plexavo/checks/iam.py` for examples.
 
+> [!NOTE]
+> **Don't pick the check's number yourself.** Use a placeholder ID such as
+> `LOG-TBD` in your PR. The maintainer assigns the final number when
+> merging, so check IDs stay in one sequence.
+
 > [!TIP]
 > **Severity is a judgment call, not a formula.** Base it on realistic
 > blast radius (what an attacker can actually reach from here), not the
@@ -137,6 +149,12 @@ The existing test files show the pattern. At minimum:
   trust in every other check's output too.
 
 ## Opening a PR
+
+Open your PR against the `dev` branch. `main` only changes when a release
+ships. GitHub defaults the base branch to `main`, so change it before you
+submit.
+
+Merged contributors are credited by name in [CONTRIBUTORS.md](CONTRIBUTORS.md).
 
 Before you open it:
 
