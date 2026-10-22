@@ -20,8 +20,7 @@
     </a>
   </p>
 
-  <p><strong>See your cloud. Secure what matters.</strong></p>
-  <p>Turn AWS configuration data into clear, actionable security intelligence.</p>
+  <p><strong>Open-source AWS security scanner. 33 deterministic checks, runs locally with your own credentials, and works with AI agents.</strong></p>
 
 </div>
 
@@ -72,6 +71,12 @@ See `docs/*-TEST-MATRIX.md` for how each check was verified.
 
 > [!TIP]
 > **Don't just trust the number.** Plexavo keeps severity, confidence, and evidence as separate signals, so a low-confidence Critical does not read the same as a high-confidence Medium.
+
+## Permissions
+
+Plexavo only reads. Attach the AWS managed policy `SecurityAudit` to a
+dedicated user or role. Setup steps:
+[`docs/automation.md`](docs/automation.md#a-dedicated-read-only-iam-user).
 
 ## How Plexavo works
 
